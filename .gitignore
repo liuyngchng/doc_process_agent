@@ -1,0 +1,15 @@
+node_modules/
+dist/
+*.log
+.env
+
+# 运行时数据
+data/app.db
+data/logs/
+data/tasks/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

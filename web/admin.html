@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>doc_process_agent 管理后台</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
+  header { background: #1a1a2e; color: white; padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+  header h1 { font-size: 18px; }
+  nav { display: flex; gap: 8px; }
+  nav button { background: transparent; color: #aaa; border: none; padding: 8px 16px; cursor: pointer; border-radius: 6px; font-size: 14px; }
+  nav button:hover, nav button.active { color: white; background: rgba(255,255,255,0.1); }
+  main { max-width: 1200px; margin: 24px auto; padding: 0 24px; }
+  .card { background: white; border-radius: 8px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #eee; font-size: 14px; }
+  th { color: #888; font-weight: 500; font-size: 12px; text-transform: uppercase; }
+  tr:hover { background: #fafafa; }
+  button.btn { display: inline-flex; align-items: center; gap: 4px; padding: 6px 14px; border-radius: 6px; border: 1px solid #ddd; background: white; cursor: pointer; font-size: 13px; }
+  button.btn:hover { background: #f0f0f0; }
+  button.btn-primary { background: #1a1a2e; color: white; border-color: #1a1a2e; }
+  button.btn-primary:hover { background: #2d2d44; }
+  button.btn-danger { color: #e53e3e; border-color: #e53e3e; }
+  button.btn-danger:hover { background: #fff5f5; }
+  button.btn-sm { padding: 4px 10px; font-size: 12px; }
+  .status { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+  .status-pending { background: #fefcbf; color: #975a16; }
+  .status-processing { background: #bee3f8; color: #2a4365; }
+  .status-success, .status-completed { background: #c6f6d5; color: #276749; }
+  .status-failed, .status-callback_fail { background: #fed7d7; color: #9b2c2c; }
+  .status-cancelled { background: #e2e8f0; color: #4a5568; }
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100; align-items: center; justify-content: center; }
+  .modal-overlay.show { display: flex; }
+  .modal { background: white; border-radius: 12px; padding: 24px; width: 90%; max-width: 800px; max-height: 85vh; overflow-y: auto; }
+  .modal h2 { margin-bottom: 16px; font-size: 18px; }
+  .form-group { margin-bottom: 14px; }
+  .form-group label { display: block; font-size: 13px; color: #666; margin-bottom: 4px; }
+  .form-group input, .form-group textarea { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; font-family: monospace; }
+  .form-group textarea { min-height: 300px; resize: vertical; line-height: 1.5; }
+  .form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  .path-mono { font-family: monospace; font-size: 13px; color: #805ad5; }
+  .detail-section { margin-bottom: 16px; }
+  .detail-section h3 { font-size: 14px; color: #888; margin-bottom: 6px; text-transform: uppercase; }
+  .detail-section pre { background: #f7f7f7; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 13px; white-space: pre-wrap; }
+  .toast { position: fixed; top: 16px; right: 16px; background: #1a1a2e; color: white; padding: 12px 20px; border-radius: 8px; font-size: 14px; z-index: 200; opacity: 0; transition: opacity 0.3s; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>doc_process_agent</h1>
+  <nav>
+    <button id="nav-interfaces" class="active" onclick="showSection('interfaces')">接口管理</button>
+    <button id="nav-tasks" onclick="showSection('tasks')">任务日志</button>
+  </nav>
+</header>
+<main id="content"></main>
+
+<div id="modal" class="modal-overlay" onclick="closeModal(event)">
+  <div class="modal" id="modal-content" onclick="event.stopPropagation()"></div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script>
+const API = '/admin';
+let currentSection = 'interfaces';
+
+// === Section Switcher ===
+function showSection(section) {
+  currentSection = section;
+  document.getElementById('nav-interfaces').classList.toggle('active', section === 'interfaces');
+  document.getElementById('nav-tasks').classList.toggle('active', section === 'tasks');
+  if (section === 'interfaces') loadInterfaces();
+  else loadTasks();
+}
+
+// === Toast ===
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2000);
+}
+
+// === Interfaces ===
+async function loadInterfaces() {
+  const res = await fetch(API + '/interfaces');
+  const { data } = await res.json();
+  const list = Array.isArray(data) ? data : [];
+  let html = '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center">' +
+    '<h2>接口列表</h2><button class="btn btn-primary" onclick="editInterface()">+ 新建接口</button></div>' +
+    '<br><table><tr><th>名称</th><th>Path</th><th>更新时间</th><th>操作</th></tr>';
+  list.forEach(i => {
+    html += '<tr>' +
+      '<td>' + esc(i.name) + '</td>' +
+      '<td><span class="path-mono">' + esc(i.path) + '</span></td>' +
+      '<td>' + fmtTs(i.updated_at) + '</td>' +
+      '<td><button class="btn btn-sm" onclick=\'editInterface(' + JSON.stringify(i).replace(/'/g, "&#39;") + ')\'>编辑</button>' +
+      ' <button class="btn btn-sm btn-danger" onclick="deleteInterface(\'' + i.id + '\',\'' + esc(i.name) + '\')">删除</button></td>' +
+      '</tr>';
+  });
+  if (list.length === 0) html += '<tr><td colspan="4" style="color:#999;padding:24px;text-align:center">暂无接口，点击"新建接口"开始</td></tr>';
+  html += '</table></div>';
+  document.getElementById('content').innerHTML = html;
+}
+
+function editInterface(existing) {
+  const modal = document.getElementById('modal-content');
+  const isNew = !existing;
+  modal.innerHTML = '<h2>' + (isNew ? '新建接口' : '编辑接口') + '</h2>' +
+    '<div class="form-group"><label>接口名称</label><input id="f-name" value="' + (existing ? esc(existing.name) : '') + '" placeholder="如: 收文分类"></div>' +
+    '<div class="form-group"><label>Path</label><input id="f-path" value="' + (existing ? esc(existing.path) : '') + '" placeholder="如: document/classify"><div style="font-size:12px;color:#888;margin-top:4px">调用方 POST /api/v1/&lt;path&gt;</div></div>' +
+    '<div class="form-group"><label>提示词模板</label><textarea id="f-prompt" placeholder="支持 {{request.body}} {{request.linkid}} {{request.xxx}} 占位符">' + (existing ? esc(existing.prompt) : '') + '</textarea></div>' +
+    '<div style="font-size:12px;color:#888;margin-bottom:8px">可用占位符: {{request.body}} {{request.linkid}} {{request.xxx.yyy}} … 任意字段均可引用</div>' +
+    '<div class="form-actions">' +
+    '<button class="btn" onclick="closeModal()">取消</button>' +
+    '<button class="btn btn-primary" onclick="saveInterface(\'' + (existing ? existing.id : '') + '\')">保存</button>' +
+    '</div>';
+  document.getElementById('modal').classList.add('show');
+}
+
+async function saveInterface(id) {
+  const name = document.getElementById('f-name').value.trim();
+  const path = document.getElementById('f-path').value.trim();
+  const prompt = document.getElementById('f-prompt').value;
+  if (!name || !path || !prompt) return toast('请填写所有字段');
+  const url = id ? API + '/interfaces/' + encodeURIComponent(id) : API + '/interfaces';
+  const method = id ? 'PUT' : 'POST';
+  const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, path, prompt }) });
+  const body = await res.json();
+  if (body.code !== 0) return toast('保存失败: ' + (body.message || ''));
+  closeModal();
+  toast(id ? '已更新' : '已创建');
+  loadInterfaces();
+}
+
+async function deleteInterface(id, name) {
+  if (!confirm('确认删除「' + name + '」?')) return;
+  const res = await fetch(API + '/interfaces/' + encodeURIComponent(id), { method: 'DELETE' });
+  if (res.ok) { toast('已删除'); loadInterfaces(); }
+  else toast('删除失败');
+}
+
+// === Tasks ===
+async function loadTasks() {
+  const res = await fetch(API + '/tasks?limit=100');
+  const { data } = await res.json();
+  const list = Array.isArray(data) ? data : [];
+  let html = '<div class="card"><h2>任务日志</h2><br><table><tr><th>Task ID</th><th>LinkID</th><th>Path</th><th>状态</th><th>创建时间</th><th>操作</th></tr>';
+  list.forEach(t => {
+    html += '<tr>' +
+      '<td style="font-family:monospace;font-size:12px">' + t.task_id.slice(0, 18) + '...</td>' +
+      '<td>' + esc(t.linkid || '') + '</td>' +
+      '<td><span class="path-mono">' + esc(t.path || '') + '</span></td>' +
+      '<td><span class="status status-' + t.status + '">' + t.status + '</span></td>' +
+      '<td>' + fmtTs(t.created_at) + '</td>' +
+      '<td><button class="btn btn-sm" onclick="viewTask(\'' + t.task_id + '\')">详情</button></td>' +
+      '</tr>';
+  });
+  if (list.length === 0) html += '<tr><td colspan="6" style="color:#999;padding:24px;text-align:center">暂无任务</td></tr>';
+  html += '</table></div>';
+  document.getElementById('content').innerHTML = html;
+}
+
+async function viewTask(taskId) {
+  const res = await fetch(API + '/tasks/' + encodeURIComponent(taskId));
+  const { data } = await res.json();
+  if (!data) return toast('未找到');
+  const modal = document.getElementById('modal-content');
+  modal.innerHTML = '<h2>任务详情</h2>' +
+    '<div class="detail-section"><h3>基本信息</h3><pre>Task ID: ' + data.task_id + '\nLinkID:  ' + (data.linkid || '-') + '\nPath:    ' + (data.path || '-') + '\nStatus:  ' + data.status + '\nCreated: ' + (data.created_at || '-') + '\nFinished:' + (data.finished_at || '-') + '</pre></div>' +
+    '<div class="detail-section"><h3>请求体</h3><pre>' + esc(formatJson(data.request_body)) + '</pre></div>' +
+    '<div class="detail-section"><h3>提示词</h3><pre>' + esc(data.prompt || '(未记录)') + '</pre></div>' +
+    '<div class="detail-section"><h3>Claude 输出</h3><pre>' + esc(data.sdk_output || '(未记录)') + '</pre></div>' +
+    '<div class="detail-section"><h3>回调体</h3><pre>' + esc(formatJson(data.callback_body)) + '</pre></div>' +
+    '<div class="detail-section"><h3>错误信息</h3><pre>' + esc(data.error_message || '(无)') + '</pre></div>' +
+    '<div class="form-actions"><button class="btn" onclick="closeModal()">关闭</button></div>';
+  document.getElementById('modal').classList.add('show');
+}
+
+// === Utilities ===
+function closeModal(e) {
+  if (e && e.target !== document.getElementById('modal')) return;
+  document.getElementById('modal').classList.remove('show');
+}
+function esc(s) { if (!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function fmtTs(s) { if (!s) return '-'; try { return new Date(s).toLocaleString('zh-CN'); } catch { return s; } }
+function formatJson(v) { if (typeof v === 'string') try { return JSON.stringify(JSON.parse(v), null, 2); } catch { return v; } return JSON.stringify(v, null, 2); }
+
+// === Init ===
+showSection('interfaces');
+</script>
+</body>
+</html>

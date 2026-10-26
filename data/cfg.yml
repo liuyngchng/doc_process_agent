@@ -1,0 +1,15 @@
+# cfg.yml — 配置文件
+# 放置于 data/ 下，容器只需挂载此目录
+
+server:
+  port: 20001
+  debug: false
+
+sys:
+  max_concurrent_tasks: 5
+  max_pending_tasks: 10
+  callback_url_token: ""
+  callback_retries: 3
+  callback_retry_interval_sec: 2
+  retention_days: 30
+  model: "claude-sonnet-4-20250514"

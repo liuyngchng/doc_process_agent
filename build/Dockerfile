@@ -1,0 +1,133 @@
+# syntax=docker/dockerfile:1
+# ============================================================================
+# Stage 1 - build TypeScript from local source
+# ============================================================================
+FROM ubuntu:24.04 AS builder
+
+ARG HTTP_PROXY=""
+ARG HTTPS_PROXY=""
+ARG NO_PROXY=""
+ARG http_proxy="$HTTP_PROXY"
+ARG https_proxy="$HTTPS_PROXY"
+ARG no_proxy="$NO_PROXY"
+
+RUN if [ -n "$HTTP_PROXY" ]; then \
+        echo 'Acquire::http::Proxy "'$HTTP_PROXY'";' > /etc/apt/apt.conf.d/01proxy; \
+    fi; \
+    if [ -n "$HTTPS_PROXY" ]; then \
+        echo 'Acquire::https::Proxy "'$HTTPS_PROXY'";' >> /etc/apt/apt.conf.d/01proxy; \
+    fi
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl
+
+# Node.js from local tarball
+COPY deploy/node-v22.23.2-linux-x64.tar.xz /tmp/
+RUN tar -xJf /tmp/node-v22.23.2-linux-x64.tar.xz -C /usr/local --strip-components=1 \
+    && rm /tmp/node-v22.23.2-linux-x64.tar.xz
+
+WORKDIR /build
+COPY package.json package-lock.json tsconfig.json ./
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --no-audit --no-fund
+COPY src/ src/
+RUN npm run build
+
+# ============================================================================
+# Stage 2 - final runtime image
+# ============================================================================
+FROM ubuntu:24.04
+
+ARG HTTP_PROXY=""
+ARG HTTPS_PROXY=""
+ARG NO_PROXY=""
+ARG http_proxy="$HTTP_PROXY"
+ARG https_proxy="$HTTPS_PROXY"
+ARG no_proxy="$NO_PROXY"
+
+RUN if [ -n "$HTTP_PROXY" ]; then \
+        echo 'Acquire::http::Proxy "'$HTTP_PROXY'";' > /etc/apt/apt.conf.d/01proxy; \
+    fi; \
+    if [ -n "$HTTPS_PROXY" ]; then \
+        echo 'Acquire::https::Proxy "'$HTTPS_PROXY'";' >> /etc/apt/apt.conf.d/01proxy; \
+    fi
+
+ENV LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    TZ=Asia/Shanghai
+
+# ---- System dependencies ----
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    git \
+    jq \
+    ripgrep \
+    sqlite3 \
+    unzip \
+    vim-tiny
+
+# ---- Node.js ----
+COPY deploy/node-v22.23.2-linux-x64.tar.xz /tmp/
+RUN tar -xJf /tmp/node-v22.23.2-linux-x64.tar.xz -C /usr/local --strip-components=1 \
+    && rm /tmp/node-v22.23.2-linux-x64.tar.xz
+
+# ---- Runtime user ----
+RUN userdel -r ubuntu 2>/dev/null || true \
+    && useradd -r -m -d /home/agent -u 1000 -s /bin/bash agent \
+    && mkdir -p /home/agent/.claude && chown agent:agent /home/agent/.claude
+
+USER agent
+ENV HOME=/home/agent
+
+# ---- Claude Code CLI ----
+# When build.sh finds a host-installed claude binary, it copies it into
+# deploy/claude-code/ and sets CLAUDE_CODE_OFFLINE=1 — offline install.
+# Otherwise falls back to `npm install -g`.
+ARG CLAUDE_CODE_OFFLINE=""
+COPY --chown=agent:agent deploy/claude-code/ /tmp/claude-code/
+
+# Offline path: use the host-provided binary
+RUN if [ -n "$CLAUDE_CODE_OFFLINE" ] && [ -f /tmp/claude-code/claude ]; then \
+      echo "Installing Claude Code CLI from local binary"; \
+      mkdir -p /home/agent/.local/bin; \
+      cp /tmp/claude-code/claude /home/agent/.local/bin/claude; \
+      chmod +x /home/agent/.local/bin/claude; \
+    fi
+
+# Online fallback
+RUN --mount=type=cache,target=/home/agent/.npm,uid=1000,gid=1000 \
+    if [ -z "$CLAUDE_CODE_OFFLINE" ] || [ ! -f /tmp/claude-code/claude ]; then \
+      echo "Claude Code CLI local binary not found, falling back to npm install"; \
+      npm set prefix /home/agent/.local; \
+      npm install -g @anthropic-ai/claude-code \
+        --fetch-retries=5 \
+        --fetch-retry-mintimeout=20000 \
+        --fetch-retry-maxtimeout=120000 \
+        --fetch-timeout=600000 \
+        --no-audit \
+        --no-fund; \
+    fi
+
+RUN rm -rf /tmp/claude-code
+
+ENV PATH=/home/agent/.local/bin:/usr/local/bin:/usr/bin:/bin
+
+# ---- App ----
+WORKDIR /app
+COPY --chown=agent:agent --from=builder /build/dist/ /app/dist/
+COPY --chown=agent:agent --from=builder /build/node_modules/ /app/node_modules/
+COPY --chown=agent:agent package.json tsconfig.json /app/
+COPY --chown=agent:agent web/ /app/web/
+
+# ---- Runtime ----
+WORKDIR /app
+EXPOSE 20001
+
+ENV DATA_DIR=/app/data
+
+CMD ["node", "dist/index.js"]
