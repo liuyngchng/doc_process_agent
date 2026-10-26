@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import { join } from 'node:path';
 import { v4 as uuid } from 'uuid';
-import type { AgentInterface, TaskLog, TaskStatus } from '../types.js';
+import type { AgentInterface, TaskLog, TaskStatus } from './types.js';
 
 let db: Database.Database;
 
