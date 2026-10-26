@@ -3,8 +3,12 @@ dist/
 *.log
 .env
 
+# 构建时生成 (build.sh → deploy/)
+deploy/
+
 # 运行时数据
 data/app.db
+data/cfg.yml
 data/logs/
 data/tasks/
 

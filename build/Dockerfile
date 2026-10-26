@@ -21,7 +21,8 @@ RUN if [ -n "$HTTP_PROXY" ]; then \
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl
+    ca-certificates curl \
+    && rm -f /etc/apt/apt.conf.d/01proxy
 
 # Node.js from local tarball
 COPY deploy/node-v22.23.2-linux-x64.tar.xz /tmp/
@@ -29,9 +30,9 @@ RUN tar -xJf /tmp/node-v22.23.2-linux-x64.tar.xz -C /usr/local --strip-component
     && rm /tmp/node-v22.23.2-linux-x64.tar.xz
 
 WORKDIR /build
-COPY package.json package-lock.json tsconfig.json ./
+COPY package.json tsconfig.json ./
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --no-audit --no-fund
+    npm install --no-audit --no-fund
 COPY src/ src/
 RUN npm run build
 
@@ -69,7 +70,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     ripgrep \
     sqlite3 \
     unzip \
-    vim-tiny
+    vim-tiny \
+    && rm -f /etc/apt/apt.conf.d/01proxy
 
 # ---- Node.js ----
 COPY deploy/node-v22.23.2-linux-x64.tar.xz /tmp/

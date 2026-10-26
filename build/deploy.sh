@@ -14,6 +14,13 @@ NETWORK="${NETWORK:-llm_net}"
 mkdir -p "$DATA_DIR"
 mkdir -p "$DATA_DIR/tasks" "$DATA_DIR/logs"
 
+# Check cfg.yml
+if [ ! -f "$DATA_DIR/cfg.yml" ]; then
+  echo "[deploy] cfg.yml 不存在，从模板复制..."
+  cp "$(pwd)/data/cfg.yml.template" "$DATA_DIR/cfg.yml"
+  echo "[deploy] 请编辑 $DATA_DIR/cfg.yml 后再启动"
+fi
+
 # Ensure network exists
 if ! docker network inspect "$NETWORK" >/dev/null 2>&1; then
   echo "[deploy] Creating network: $NETWORK"

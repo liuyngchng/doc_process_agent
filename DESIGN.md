@@ -576,25 +576,9 @@ admin / 初始密码 (首次登录强制修改)
 
 ---
 
-## 8. 与现有 doc_flow_agent 的对比
+## 8. 部署
 
-| | doc_flow_agent (Go) | doc_process_agent (TS) |
-|---|---|---|
-| 接口定义方式 | 代码硬编码 + 注册表 (registry.go) | 管理后台创建 path + 提示词 |
-| 新增接口 | 改代码 + 重新编译 + 部署 | 后台填 path + 提示词，即时生效 |
-| 文件处理 | 代码下载 + 解析 (docx/pdf/xlsx) | Claude SDK 自行下载和读取 |
-| LLM 调用 | OpenAI 兼容 API (纯文本补全) | Claude Code Agent SDK (tools) |
-| 业务逻辑 | translate/render/wrap 等多步 Pipeline | 只渲染提示词 |
-| 提示词占位符 | 固定占位符 | `{{request.xxx}}` 任意字段引用 |
-| 管理后台 | Go 模板 + 内嵌静态资源 | 内嵌 SPA |
-| 存储 | SQLite | SQLite |
-| 运行时 | Go 二进制 | Node.js |
-
----
-
-## 9. 部署
-
-### 9.1 目录挂载
+### 8.1 目录挂载
 
 ```
 doc_process_agent 容器:
@@ -606,13 +590,13 @@ doc_process_agent 容器:
     data/logs/          — 应用日志
 ```
 
-### 9.2 端口
+### 8.2 端口
 
 ```
 20001 — HTTPS (自签证书)
 ```
 
-### 9.3 健康检查
+### 8.3 健康检查
 
 ```
 GET /health → {"status":"ok","timestamp":"2026-10-27 10:00:00"}
@@ -620,7 +604,7 @@ GET /health → {"status":"ok","timestamp":"2026-10-27 10:00:00"}
 
 ---
 
-## 10. 下一步
+## 9. 下一步
 
 本方案已完整定义系统架构、接口规范、提示词系统、技术栈、项目结构。直接按此实现即可。
 
