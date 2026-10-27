@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { createServer as createHttpsServer } from 'node:https';
 import { readFileSync } from 'node:fs';
 import express from 'express';
+import cookieParser from 'cookie-parser';
 import { loadConfig, ensureDirs } from './config.js';
 import { initLogger } from './logger.js';
 import { initStore } from './store.js';
@@ -10,6 +11,7 @@ import { createProcessRouter } from './routes/process.js';
 import { createHealthRouter } from './routes/health.js';
 import { createTasksRouter } from './routes/tasks.js';
 import { createAdminRouter } from './routes/admin.js';
+import { createAuthRouter, authWebMiddleware } from './routes/auth.js';
 
 const cfg = loadConfig();
 ensureDirs(cfg);
@@ -27,15 +29,40 @@ log.info('task_queue_ready');
 // Express
 const app = express();
 app.use(express.json({ limit: '10mb' }));
+app.use(cookieParser());
 
+// ============================================================
 // 公开路由（无需认证）
+// ============================================================
 app.use(createHealthRouter());
 
-// 对外业务接口（无需认证，先跑通功能）
+// 认证 API（登录/登出/改密）
+app.use(createAuthRouter());
+
+// 登录页面
+app.get('/login', (_req, res) => {
+  res.sendFile('login.html', { root: 'web' });
+});
+
+// 静态资源（公开，登录页也需要）
+app.use('/static', express.static('web/static'));
+
+// 对外业务接口（外部系统调用，无 Cookie）
 app.use(createProcessRouter(cfg));
 
-// 任务管理
+// 任务管理 API（外部系统调用）
 app.use(createTasksRouter());
+
+// Dev null — 用于调试接收请求
+app.post('/api/dev/null', (req, res) => {
+  log.info({ body: req.body }, 'dev_null_received');
+  res.json({ status: 'ok' });
+});
+
+// ============================================================
+// 以下需要登录（Web Cookie 认证）
+// ============================================================
+app.use(authWebMiddleware);
 
 // 管理后台 API
 app.use(createAdminRouter());
@@ -44,17 +71,10 @@ app.use(createAdminRouter());
 app.get('/admin', (_req, res) => {
   res.sendFile('admin.html', { root: 'web' });
 });
-app.use('/static', express.static('web/static'));
 
 // 根路径重定向到管理后台
 app.get('/', (_req, res) => {
   res.redirect('/admin');
-});
-
-// Dev null — 用于调试接收请求
-app.post('/api/dev/null', (req, res) => {
-  log.info({ body: req.body }, 'dev_null_received');
-  res.json({ status: 'ok' });
 });
 
 // 启动 — 有证书则 HTTPS，否则 HTTP

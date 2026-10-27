@@ -72,3 +72,16 @@ export interface QueueItem {
   iface: AgentInterface;
   body: ProcessRequest;
 }
+
+// ============================================================
+// 用户
+// ============================================================
+export interface User {
+  id: number;
+  username: string;
+  password_hash: string;
+  role: number;          // 1 = admin, 0 = normal
+  note: string;
+  must_change_pwd: boolean;
+  created_at: string;
+}

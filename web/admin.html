@@ -12,6 +12,7 @@
     <header>
         <h1><i class="fas fa-cogs"></i> doc_process_agent 管理后台</h1>
         <p>接口管理 &middot; 任务日志</p>
+        <button class="logout-btn" onclick="doLogout()"><i class="fas fa-sign-out-alt"></i> 退出登录</button>
     </header>
 
     <div class="cfg-layout">
@@ -264,6 +265,11 @@ document.getElementById('taskModal').addEventListener('click', function(e) { if 
 
 // Init
 loadInterfaces();
+
+async function doLogout() {
+    await fetch('/api/logout', { method: 'POST' });
+    window.location.href = '/login';
+}
 </script>
 </body>
 </html>

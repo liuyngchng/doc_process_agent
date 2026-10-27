@@ -44,7 +44,34 @@ sys:
   model: "claude-sonnet-4-20250514"
 
   # 文档解析服务地址（自签名 HTTPS），Claude 通过 curl -k 调用提取 PDF/DOCX 文本
-  doc_util_url: "https://doc_util_server:8443"
+  doc_util_url: "https://:docutil-server:8080"
+
+# ---- LLM 适配器配置（必填，指向 Anthropic 协议兼容网关） ----
+# 本服务通过网关调用 LLM，base_url 留空则启动时报错退出。
+llm:
+  # 网关地址【必填】
+  base_url: "http://api_adapter_g_app:16005"
+
+  # 网关认证 token（对应网关的 llm_api_key；网关未启用认证可留空）
+  auth_token: ""
+
+  # 各模型映射（由网关转发到真实模型）
+  model: "deepseek-v4-pro[1m]"
+  opus_model: "deepseek-v4-pro[1m]"
+  sonnet_model: "deepseek-v4-pro[1m]"
+  haiku_model: "deepseek-v4-flash[1m]"
+  subagent_model: "deepseek-v4-flash[1m]"
+
+  # 推理强度: low | medium | high | xhigh | max
+  effort_level: "max"
+
+  # API 超时（毫秒）
+  timeout_ms: 600000
+
+  # 离线/私有部署优化：关闭非必要遥测
+  disable_nonessential_traffic: true
+  # 关闭 Co-Authored-By 归因头
+  attribution_header: false
 
 # ---- 数据目录（可选，默认程序运行目录下的 data/） ----
 # data_dir: "/app/data"

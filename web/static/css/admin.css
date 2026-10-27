@@ -52,6 +52,215 @@ header p {
     opacity: 0.85;
 }
 
+.logout-btn {
+    position: absolute;
+    top: 50%;
+    right: 20px;
+    transform: translateY(-50%);
+    padding: 8px 16px;
+    background: rgba(255, 255, 255, 0.15);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s;
+}
+
+.logout-btn:hover {
+    background: rgba(255, 255, 255, 0.25);
+}
+
+/* ---- 登录页 ---- */
+.login-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    width: 100%;
+}
+
+.login-card {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+    width: 100%;
+    max-width: 420px;
+    overflow: hidden;
+}
+
+.login-header {
+    background: linear-gradient(to right, #4b6cb7, #182848);
+    color: white;
+    padding: 36px 30px 30px;
+    text-align: center;
+}
+
+.login-header i {
+    font-size: 3rem;
+    margin-bottom: 12px;
+    display: block;
+    opacity: 0.9;
+}
+
+.login-header h1 {
+    font-size: 1.6rem;
+    margin-bottom: 6px;
+}
+
+.login-header p {
+    opacity: 0.8;
+    font-size: 0.9rem;
+}
+
+.login-error {
+    margin: 20px 30px 0;
+    padding: 12px 16px;
+    background: #fff0f0;
+    border: 1px solid #ffcdd2;
+    border-radius: 8px;
+    color: #c62828;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.login-form {
+    padding: 30px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.login-field label {
+    display: block;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #555;
+    margin-bottom: 6px;
+}
+
+.login-field label i {
+    width: 18px;
+    color: #4b6cb7;
+}
+
+.login-field input {
+    width: 100%;
+    padding: 12px 16px;
+    border: 2px solid #e0e3e8;
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.login-field input:focus {
+    outline: none;
+    border-color: #4b6cb7;
+    box-shadow: 0 0 0 3px rgba(75, 108, 183, 0.12);
+}
+
+.login-btn {
+    width: 100%;
+    padding: 13px;
+    border: none;
+    border-radius: 8px;
+    font-size: 1.05rem;
+    font-weight: 600;
+    cursor: pointer;
+    background: linear-gradient(135deg, #4b6cb7, #3a5a9e);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.2s;
+    margin-top: 6px;
+}
+
+.login-btn:hover {
+    background: linear-gradient(135deg, #3a5a9e, #2c487e);
+    box-shadow: 0 4px 12px rgba(75, 108, 183, 0.3);
+    transform: translateY(-1px);
+}
+
+/* ---- 修改密码弹窗 ---- */
+.pwd-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 9999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+.pwd-modal {
+    background: white;
+    border-radius: 12px;
+    padding: 28px 32px;
+    width: 360px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.2);
+}
+.pwd-modal h3 {
+    margin: 0 0 20px;
+    font-size: 1.1rem;
+    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.pwd-modal-error {
+    padding: 10px 14px;
+    background: #fff0f0;
+    border-radius: 6px;
+    color: #c62828;
+    font-size: 0.85rem;
+    margin-bottom: 14px;
+}
+.pwd-field {
+    margin-bottom: 14px;
+}
+.pwd-field label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #555;
+    margin-bottom: 4px;
+}
+.pwd-field input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 2px solid #e0e3e8;
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+.pwd-field input:focus {
+    outline: none;
+    border-color: #4b6cb7;
+}
+.pwd-hint {
+    font-size: 0.75rem;
+    color: #999;
+    margin-top: 4px;
+}
+.pwd-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 20px;
+}
+.force-pwd-tip {
+    margin: 0 0 16px;
+    color: #888;
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
 /* ---- 布局 ---- */
 .cfg-layout {
     display: flex;

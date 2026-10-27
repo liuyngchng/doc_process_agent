@@ -12,6 +12,44 @@ import type { Config } from '../config.js';
 
 const log = getLogger();
 
+/** 根据 LLM 配置构建 Claude Code 子进程环境变量 */
+function buildEnv(cfg: Config): Record<string, string | undefined> {
+  // SDK 的 env 会整体替换子进程环境（不自动合并 process.env），
+  // 因此先继承父进程环境，再用 adapter 配置覆盖。
+  const env: Record<string, string | undefined> = { ...process.env };
+  const l = cfg.llm;
+
+  // ── 网关地址（必填，config 层已强制校验） ──
+  env.ANTHROPIC_BASE_URL = l.base_url;
+
+  // 网关认证
+  if (l.auth_token) {
+    env.ANTHROPIC_AUTH_TOKEN = l.auth_token;
+  } else {
+    delete env.ANTHROPIC_AUTH_TOKEN;
+  }
+
+  // ── 模型映射 ──
+  env.ANTHROPIC_MODEL = l.model || env.ANTHROPIC_MODEL;
+  if (l.opus_model) env.ANTHROPIC_DEFAULT_OPUS_MODEL = l.opus_model;
+  if (l.sonnet_model) env.ANTHROPIC_DEFAULT_SONNET_MODEL = l.sonnet_model;
+  if (l.haiku_model) env.ANTHROPIC_DEFAULT_HAIKU_MODEL = l.haiku_model;
+  if (l.subagent_model) env.CLAUDE_CODE_SUBAGENT_MODEL = l.subagent_model;
+  if (l.effort_level) env.CLAUDE_CODE_EFFORT_LEVEL = l.effort_level;
+  if (l.timeout_ms) env.API_TIMEOUT_MS = String(l.timeout_ms);
+
+  // ═══════════════════════════════════════════════════════════════
+  // 清理可能让 CLI 绕过网关的凭据
+  // ═══════════════════════════════════════════════════════════════
+  delete env.ANTHROPIC_API_KEY;
+
+  // 私有部署：关闭非必要遥测和归因头
+  env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1';
+  env.CLAUDE_CODE_ATTRIBUTION_HEADER = '0';
+
+  return env;
+}
+
 function buildClaudeMd(docUtilUrl: string): string {
   return `# doc_process_agent 工作区
 
@@ -89,7 +127,8 @@ export async function runAgent(
         cwd: workDir,
         permissionMode: 'bypassPermissions',
         tools: { type: 'preset', preset: 'claude_code' },
-        model: cfg.sys.model,
+        model: cfg.llm.model || cfg.sys.model,
+        env: buildEnv(cfg),
         systemPrompt: { type: 'preset', preset: 'claude_code' },
       },
     });

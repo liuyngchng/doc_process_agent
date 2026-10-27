@@ -23,6 +23,19 @@ interface CfgFile {
     data_dir?: string;
     doc_util_url?: string;
   };
+  llm?: {
+    base_url?: string;
+    auth_token?: string;
+    model?: string;
+    opus_model?: string;
+    sonnet_model?: string;
+    haiku_model?: string;
+    subagent_model?: string;
+    effort_level?: string;
+    timeout_ms?: number;
+    disable_nonessential_traffic?: boolean;
+    attribution_header?: boolean;
+  };
 }
 
 export interface Config {
@@ -42,6 +55,19 @@ export interface Config {
     model: string;
     data_dir: string;
     doc_util_url: string;
+  };
+  llm: {
+    base_url: string;
+    auth_token: string;
+    model: string;
+    opus_model: string;
+    sonnet_model: string;
+    haiku_model: string;
+    subagent_model: string;
+    effort_level: string;
+    timeout_ms: number;
+    disable_nonessential_traffic: boolean;
+    attribution_header: boolean;
   };
 }
 
@@ -84,6 +110,19 @@ const cfg = loadCfgFile();
 export function loadConfig(): Config {
   const s = cfg.server ?? {};
   const y = cfg.sys ?? {};
+  const l = cfg.llm ?? {};
+
+  const llmBaseUrl = env('ANTHROPIC_BASE_URL', l.base_url ?? '');
+  if (!llmBaseUrl) {
+    // 强制要求配置 LLM 网关地址
+    console.error(
+      '[config] 缺少 llm.base_url（或环境变量 ANTHROPIC_BASE_URL）。\n' +
+      '         必须指向 Anthropic 协议兼容网关（如 api_adapter_g）。\n' +
+      '         请在 data/cfg.yml 中填写 llm.base_url。'
+    );
+    process.exit(1);
+  }
+
   return {
     server: {
       port: envInt('SERVER_PORT', s.port ?? 20001),
@@ -101,6 +140,19 @@ export function loadConfig(): Config {
       model: env('MODEL', y.model ?? 'claude-sonnet-4-20250514'),
       data_dir: env('DATA_DIR', y.data_dir ?? DATA_DIR),
       doc_util_url: env('DOC_UTIL_URL', y.doc_util_url ?? 'https://doc_util_server:8443'),
+    },
+    llm: {
+      base_url: llmBaseUrl,
+      auth_token: env('ANTHROPIC_AUTH_TOKEN', l.auth_token ?? ''),
+      model: env('ANTHROPIC_MODEL', l.model ?? 'claude-sonnet-4-20250514'),
+      opus_model: env('ANTHROPIC_DEFAULT_OPUS_MODEL', l.opus_model ?? ''),
+      sonnet_model: env('ANTHROPIC_DEFAULT_SONNET_MODEL', l.sonnet_model ?? ''),
+      haiku_model: env('ANTHROPIC_DEFAULT_HAIKU_MODEL', l.haiku_model ?? ''),
+      subagent_model: env('CLAUDE_CODE_SUBAGENT_MODEL', l.subagent_model ?? ''),
+      effort_level: env('CLAUDE_CODE_EFFORT_LEVEL', l.effort_level ?? ''),
+      timeout_ms: envInt('API_TIMEOUT_MS', l.timeout_ms ?? 600000),
+      disable_nonessential_traffic: envBool('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', l.disable_nonessential_traffic ?? true),
+      attribution_header: envBool('CLAUDE_CODE_ATTRIBUTION_HEADER', l.attribution_header ?? false),
     },
   };
 }

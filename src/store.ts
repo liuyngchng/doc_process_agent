@@ -1,7 +1,8 @@
 import Database from 'better-sqlite3';
 import { join } from 'node:path';
 import { v4 as uuid } from 'uuid';
-import type { AgentInterface, TaskLog, TaskStatus } from './types.js';
+import bcrypt from 'bcryptjs';
+import type { AgentInterface, TaskLog, TaskStatus, User } from './types.js';
 
 let db: Database.Database;
 
@@ -34,9 +35,30 @@ export function initStore(dataDir: string): Database.Database {
       created_at    TEXT,
       finished_at   TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS users (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      username        TEXT UNIQUE NOT NULL,
+      password_hash   TEXT NOT NULL,
+      role            INTEGER DEFAULT 0,
+      note            TEXT DEFAULT '',
+      must_change_pwd INTEGER DEFAULT 0,
+      created_at      TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS config (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      note  TEXT
+    );
   `);
   // Migration: add sdk_trace column if missing (added in v0.1.x)
   try { db.exec(`ALTER TABLE task_logs ADD COLUMN sdk_trace TEXT`); } catch { /* already exists */ }
+  // Migration: add users / config tables if missing (added in v0.2.x)
+  try { db.exec(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, role INTEGER DEFAULT 0, note TEXT DEFAULT '', must_change_pwd INTEGER DEFAULT 0, created_at TEXT)`); } catch { /* already exists */ }
+  try { db.exec(`CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT NOT NULL, note TEXT)`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE users ADD COLUMN must_change_pwd INTEGER DEFAULT 0`); } catch { /* already exists */ }
+
   seedDefaults(db);
   return db;
 }
@@ -47,17 +69,25 @@ export function getDb(): Database.Database {
 
 // 初始化默认接口
 function seedDefaults(db: Database.Database) {
-  const count = (db.prepare('SELECT COUNT(*) AS c FROM agent_interfaces').get() as { c: number }).c;
-  if (count > 0) return;
+  const ifaceCount = (db.prepare('SELECT COUNT(*) AS c FROM agent_interfaces').get() as { c: number }).c;
+  if (ifaceCount === 0) {
+    const now = new Date().toISOString();
+    const insert = db.prepare(
+      'INSERT INTO agent_interfaces (id, name, path, prompt, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+    );
 
-  const now = new Date().toISOString();
-  const insert = db.prepare(
-    'INSERT INTO agent_interfaces (id, name, path, prompt, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
-  );
+    insert.run(uuid(), '收文分类', 'document/classify', defaultClassifyPrompt(), now, now);
+    insert.run(uuid(), '流转目标识别', 'document/route', defaultRoutePrompt(), now, now);
+    insert.run(uuid(), '发文审核', 'document/dispatch-review', defaultDispatchReviewPrompt(), now, now);
+  }
 
-  insert.run(uuid(), '收文分类', 'document/classify', defaultClassifyPrompt(), now, now);
-  insert.run(uuid(), '流转目标识别', 'document/route', defaultRoutePrompt(), now, now);
-  insert.run(uuid(), '发文审核', 'document/dispatch-review', defaultDispatchReviewPrompt(), now, now);
+  // 初始化默认 admin 用户（密码 admin/admin，首次登录必须改密）
+  const userCount = (db.prepare('SELECT COUNT(*) AS c FROM users').get() as { c: number }).c;
+  if (userCount === 0) {
+    db.prepare(
+      'INSERT INTO users (username, password_hash, role, note, must_change_pwd, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run('admin', hashPasswordSync('admin'), 1, '默认管理员', 1, new Date().toISOString());
+  }
 }
 
 function defaultClassifyPrompt(): string {
@@ -267,5 +297,47 @@ export const taskLogsStore = {
     return db.prepare(
       `SELECT * FROM task_logs WHERE status IN ('pending', 'processing') ORDER BY created_at ASC`
     ).all() as TaskLog[];
+  },
+};
+
+// ============================================================
+// 密码工具（bcrypt）
+// ============================================================
+export function hashPasswordSync(password: string): string {
+  return bcrypt.hashSync(password, 10);
+}
+
+export function comparePasswordSync(password: string, hash: string): boolean {
+  return bcrypt.compareSync(password, hash);
+}
+
+// ============================================================
+// 用户 CRUD
+// ============================================================
+export const usersStore = {
+  get(username: string): User | undefined {
+    return db.prepare('SELECT * FROM users WHERE username = ?').get(username) as User | undefined;
+  },
+  list(): User[] {
+    return db.prepare('SELECT id, username, password_hash, role, note, COALESCE(must_change_pwd,0) AS must_change_pwd, COALESCE(created_at,\'\') AS created_at FROM users ORDER BY id').all() as User[];
+  },
+  updatePassword(username: string, hash: string): boolean {
+    return db.prepare('UPDATE users SET password_hash = ? WHERE username = ?').run(hash, username).changes > 0;
+  },
+  clearMustChangePwd(username: string): boolean {
+    return db.prepare('UPDATE users SET must_change_pwd = 0 WHERE username = ?').run(username).changes > 0;
+  },
+};
+
+// ============================================================
+// 配置 KV（用于持久化 token 签名密钥等）
+// ============================================================
+export const configStore = {
+  get(key: string): string | undefined {
+    const row = db.prepare('SELECT value FROM config WHERE key = ?').get(key) as { value: string } | undefined;
+    return row?.value;
+  },
+  set(key: string, value: string, note?: string): void {
+    db.prepare('INSERT INTO config (key, value, note) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, note = excluded.note').run(key, value, note ?? '');
   },
 };
