@@ -1,9 +1,12 @@
-# cfg.yml — 配置文件
-# 放置于 data/ 下，容器只需挂载此目录
+# ============================================================================
+# doc_process_agent 配置（本地环境，不提交 Git）
+# ============================================================================
 
 server:
   port: 20001
-  debug: false
+  debug: true
+  cert_file: ""
+  key_file: ""
 
 sys:
   max_concurrent_tasks: 5
@@ -13,3 +16,4 @@ sys:
   callback_retry_interval_sec: 2
   retention_days: 30
   model: "claude-sonnet-4-20250514"
+  doc_util_url: "https://doc_util_server:8443"

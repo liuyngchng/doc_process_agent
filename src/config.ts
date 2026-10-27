@@ -5,11 +5,12 @@ import { load as loadYaml } from 'js-yaml';
 // ---- 默认值 ----
 const DATA_DIR = process.env.DATA_DIR || resolve(process.cwd(), 'data');
 
-// 配置文件结构（与 cfg.yml.template 对齐）
 interface CfgFile {
   server?: {
     port?: number;
     debug?: boolean;
+    cert_file?: string;
+    key_file?: string;
   };
   sys?: {
     max_concurrent_tasks?: number;
@@ -20,6 +21,7 @@ interface CfgFile {
     retention_days?: number;
     model?: string;
     data_dir?: string;
+    doc_util_url?: string;
   };
 }
 
@@ -27,6 +29,8 @@ export interface Config {
   server: {
     port: number;
     debug: boolean;
+    cert_file: string;
+    key_file: string;
   };
   sys: {
     max_concurrent_tasks: number;
@@ -37,6 +41,7 @@ export interface Config {
     retention_days: number;
     model: string;
     data_dir: string;
+    doc_util_url: string;
   };
 }
 
@@ -83,6 +88,8 @@ export function loadConfig(): Config {
     server: {
       port: envInt('SERVER_PORT', s.port ?? 20001),
       debug: envBool('DEBUG', s.debug ?? false),
+      cert_file: env('CERT_FILE', s.cert_file ?? ''),
+      key_file: env('KEY_FILE', s.key_file ?? ''),
     },
     sys: {
       max_concurrent_tasks: envInt('MAX_CONCURRENT_TASKS', y.max_concurrent_tasks ?? 5),
@@ -93,6 +100,7 @@ export function loadConfig(): Config {
       retention_days: envInt('RETENTION_DAYS', y.retention_days ?? 30),
       model: env('MODEL', y.model ?? 'claude-sonnet-4-20250514'),
       data_dir: env('DATA_DIR', y.data_dir ?? DATA_DIR),
+      doc_util_url: env('DOC_UTIL_URL', y.doc_util_url ?? 'https://doc_util_server:8443'),
     },
   };
 }

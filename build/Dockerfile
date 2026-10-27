@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 # ============================================================================
 # Stage 1 - build TypeScript from local source
 # ============================================================================
@@ -21,7 +20,7 @@ RUN if [ -n "$HTTP_PROXY" ]; then \
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl \
+    ca-certificates curl xz-utils \
     && rm -f /etc/apt/apt.conf.d/01proxy
 
 # Node.js from local tarball
@@ -71,6 +70,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     sqlite3 \
     unzip \
     vim-tiny \
+    xz-utils \
     && rm -f /etc/apt/apt.conf.d/01proxy
 
 # ---- Node.js ----
@@ -125,6 +125,15 @@ COPY --chown=agent:agent --from=builder /build/dist/ /app/dist/
 COPY --chown=agent:agent --from=builder /build/node_modules/ /app/node_modules/
 COPY --chown=agent:agent package.json tsconfig.json /app/
 COPY --chown=agent:agent web/ /app/web/
+
+# ---- HTTPS certs ----
+ARG HTTPS_CERT=""
+COPY --chown=agent:agent deploy/certs/ /tmp/certs/
+RUN if [ -n "$HTTPS_CERT" ] && [ -f /tmp/certs/cert.pem ]; then \
+      mkdir -p /app/deploy/certs && \
+      cp /tmp/certs/cert.pem /tmp/certs/key.pem /app/deploy/certs/; \
+    fi && \
+    rm -rf /tmp/certs
 
 # ---- Runtime ----
 WORKDIR /app

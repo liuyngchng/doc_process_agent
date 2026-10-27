@@ -9,11 +9,16 @@
 
 # ---- 服务配置 ----
 server:
-  # HTTP 监听端口
+  # HTTP/HTTPS 监听端口
   port: 20001
 
   # 调试模式: true=开启(日志更详细), false=关闭(生产环境)
   debug: false
+
+  # HTTPS 证书路径（留空则使用 HTTP）
+  # 镜像内默认路径，通常无需修改
+  cert_file: "/app/deploy/certs/cert.pem"
+  key_file: "/app/deploy/certs/key.pem"
 
 # ---- 系统配置 ----
 sys:
@@ -37,6 +42,9 @@ sys:
 
   # Claude Code Agent SDK 默认模型
   model: "claude-sonnet-4-20250514"
+
+  # 文档解析服务地址（自签名 HTTPS），Claude 通过 curl -k 调用提取 PDF/DOCX 文本
+  doc_util_url: "https://doc_util_server:8443"
 
 # ---- 数据目录（可选，默认程序运行目录下的 data/） ----
 # data_dir: "/app/data"

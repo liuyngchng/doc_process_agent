@@ -99,13 +99,13 @@ if [[ -n "$HTTP_PROXY_VAL" || -n "$HTTPS_PROXY_VAL" ]]; then
   )
 fi
 
-# ---- prepare deploy/ ----
-rm -rf "$SCRIPT_DIR/deploy"
-mkdir -p "$SCRIPT_DIR/deploy/claude-code" "$SCRIPT_DIR/deploy/certs"
+# ---- prepare deploy/ (项目根目录，Docker build context) ----
+rm -rf "$PROJECT_ROOT/deploy"
+mkdir -p "$PROJECT_ROOT/deploy/claude-code" "$PROJECT_ROOT/deploy/certs"
 
 # ---- Node.js tarball ----
 NODE_TARBALL="node-v22.23.2-linux-x64.tar.xz"
-NODE_TARBALL_PATH="$SCRIPT_DIR/deploy/$NODE_TARBALL"
+NODE_TARBALL_PATH="$PROJECT_ROOT/deploy/$NODE_TARBALL"
 
 # 若本地缓存目录已有该 tarball 则复用，否则联网下载
 NODE_CACHE_DIR="${NODE_CACHE_DIR:-$HOME/.cache/doc-process-agent}"
@@ -125,7 +125,7 @@ else
 fi
 
 # ---- Claude Code CLI local binary sync ----
-CLAUDE_CODE_STAGING="$SCRIPT_DIR/deploy/claude-code"
+CLAUDE_CODE_STAGING="$PROJECT_ROOT/deploy/claude-code"
 CLAUDE_CODE_SRC=""
 for candidate in \
   "$(command -v claude 2>/dev/null)" \
@@ -152,15 +152,27 @@ else
 fi
 
 # ---- HTTPS certs ----
-CERTS_DIR="$SCRIPT_DIR/deploy/certs"
+# 自签名证书，生成一次后复用（与 doc_util 的 gen_cert.sh 参数一致）
+CERTS_DIR="$PROJECT_ROOT/deploy/certs"
 CERT_FILE="$CERTS_DIR/cert.pem"
 KEY_FILE="$CERTS_DIR/key.pem"
 
-if [ -f "$PROJECT_ROOT/dist/cert.pem" ] && [ -f "$PROJECT_ROOT/dist/key.pem" ]; then
-  cp "$PROJECT_ROOT/dist/cert.pem" "$CERT_FILE"
-  cp "$PROJECT_ROOT/dist/key.pem" "$KEY_FILE"
+if [[ ! -f "$CERT_FILE" || ! -f "$KEY_FILE" ]]; then
+  if command -v openssl &>/dev/null; then
+    echo "[build] 生成自签名 HTTPS 证书 (RSA-2048, 10年)"
+    openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
+      -keyout "$KEY_FILE" \
+      -out "$CERT_FILE" \
+      -subj "/C=CN/O=doc_process_agent/CN=localhost" \
+      -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" 2>/dev/null
+  else
+    echo "[build] 警告: 未找到 openssl，跳过证书生成，服务将使用 HTTP"
+  fi
+fi
+
+if [[ -f "$CERT_FILE" && -f "$KEY_FILE" ]]; then
   DOCKER_BUILD_ARGS+=(--build-arg "HTTPS_CERT=1")
-  echo "[build] HTTPS 证书已复制"
+  echo "[build] HTTPS 证书已就绪"
 fi
 
 # ---- Install dependencies + compile TypeScript ----
@@ -183,29 +195,13 @@ echo "[build] TypeScript 编译完成"
 echo ""
 echo "=== Docker build ==="
 
-# 检查 buildx 是否可用
-if ! docker buildx version &>/dev/null; then
-  echo "ERROR: 未检测到 docker buildx，请安装后重试。"
-  echo ""
-  echo "安装方式:"
-  echo "  Ubuntu/Debian: sudo apt-get install docker-buildx-plugin"
-  echo "  或从 GitHub 下载: https://github.com/docker/buildx/releases"
-  echo "  安装文档: https://docs.docker.com/buildx/install/"
+# 检查本地基础镜像
+if ! docker image inspect ubuntu:24.04 >/dev/null 2>&1; then
+  echo "ERROR: 本地缺少 ubuntu:24.04 基础镜像，请先拉取: docker pull ubuntu:24.04"
   exit 1
 fi
 
-# 确保存在一个 docker-container driver 的 buildx builder，以支持跨构建持久化缓存。
-# docker driver 的 --mount=type=cache 只在单次构建中有效。
-BUILDER_NAME="${BUILDER:-doc-agent-builder}"
-if ! docker buildx inspect "$BUILDER_NAME" &>/dev/null; then
-  echo "[build] 创建 buildx builder: $BUILDER_NAME (docker-container driver)"
-  docker buildx create --name "$BUILDER_NAME" --driver docker-container --use
-else
-  docker buildx use "$BUILDER_NAME" &>/dev/null || true
-fi
-
 docker buildx build \
-    --builder "$BUILDER_NAME" \
     "${DOCKER_BUILD_ARGS[@]+"${DOCKER_BUILD_ARGS[@]}"}" \
     -t "${FULL_TAG}" \
     -t "${IMAGE_NAME}:latest" \

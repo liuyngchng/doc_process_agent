@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs';
+import { createServer as createHttpsServer } from 'node:https';
+import { readFileSync } from 'node:fs';
 import express from 'express';
 import { loadConfig, ensureDirs } from './config.js';
 import { initLogger } from './logger.js';
@@ -54,8 +57,21 @@ app.post('/api/dev/null', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// 启动
+// 启动 — 有证书则 HTTPS，否则 HTTP
 const port = cfg.server.port;
-app.listen(port, () => {
-  log.info({ port, url: 'http://localhost:' + port }, 'server_started');
-});
+const certFile = cfg.server.cert_file;
+const keyFile = cfg.server.key_file;
+
+if (certFile && keyFile && existsSync(certFile) && existsSync(keyFile)) {
+  const httpsOpts = {
+    cert: readFileSync(certFile),
+    key: readFileSync(keyFile),
+  };
+  createHttpsServer(httpsOpts, app).listen(port, () => {
+    log.info({ port, url: 'https://localhost:' + port }, 'server_started_https');
+  });
+} else {
+  app.listen(port, () => {
+    log.info({ port, url: 'http://localhost:' + port }, 'server_started_http');
+  });
+}

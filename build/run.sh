@@ -27,6 +27,12 @@ if ! docker network inspect "$NETWORK" >/dev/null 2>&1; then
   docker network create "$NETWORK"
 fi
 
+# Detect local IP
+LOCAL_IP=$(ip -4 addr show scope global | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
+if [ -z "$LOCAL_IP" ]; then
+  LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+fi
+
 case "${1:-start}" in
   start)
     # Check if image exists
@@ -50,6 +56,24 @@ case "${1:-start}" in
       --restart unless-stopped \
       "$IMAGE"
     echo "[deploy] Started on port $HOST_PORT"
+    echo ""
+    # 检查镜像是否内含证书，决定用 http 还是 https
+    PROTO="http"
+    if docker run --rm --entrypoint /bin/sh "$IMAGE" -c "test -f /app/deploy/certs/cert.pem && echo yes || echo no" 2>/dev/null | grep -q yes; then
+      PROTO="https"
+    fi
+    if [ -n "$LOCAL_IP" ]; then
+      echo "  管理后台:  $PROTO://$LOCAL_IP:$HOST_PORT/admin"
+      echo "  健康检查:  $PROTO://$LOCAL_IP:$HOST_PORT/health"
+      echo "  业务接口:  POST $PROTO://$LOCAL_IP:$HOST_PORT/api/v1/<path>"
+    else
+      echo "  管理后台:  $PROTO://localhost:$HOST_PORT/admin"
+      echo "  健康检查:  $PROTO://localhost:$HOST_PORT/health"
+      echo "  业务接口:  POST $PROTO://localhost:$HOST_PORT/api/v1/<path>"
+    fi
+    echo ""
+    echo "  (自签证书，浏览器访问请点\"高级\"→\"继续\")"
+    echo ""
     ;;
 
   stop)
