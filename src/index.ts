@@ -65,7 +65,7 @@ app.post('/api/dev/null', (req, res) => {
 app.use(authWebMiddleware);
 
 // 管理后台 API
-app.use(createAdminRouter());
+app.use(createAdminRouter(cfg));
 
 // 管理后台 Web 页面
 app.get('/admin', (_req, res) => {

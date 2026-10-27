@@ -1,10 +1,15 @@
 import { Router, Request, Response } from 'express';
+import { v4 as uuid } from 'uuid';
 import { interfacesStore, taskLogsStore } from '../store.js';
+import { renderPrompt } from '../services/prompt-engine.js';
+import { runAgent } from '../services/sdk-runner.js';
 import { getLogger } from '../logger.js';
+import type { Config } from '../config.js';
+import type { TaskLog, TaskStatus } from '../types.js';
 
 const log = getLogger();
 
-export function createAdminRouter(): Router {
+export function createAdminRouter(cfg: Config): Router {
   const router = Router();
 
   // ---- 接口管理 ----
@@ -72,6 +77,100 @@ export function createAdminRouter(): Router {
     }
     log.info({ id: req.params.id }, 'interface_deleted');
     res.json({ code: 0, message: '已删除' });
+  });
+
+  // ---- 模拟操作 ----
+
+  router.post('/admin/simulate', (req: Request, res: Response) => {
+    const { interface_path, linkid: reqLinkid, request_body } = req.body as {
+      interface_path?: string;
+      linkid?: string;
+      request_body?: Record<string, unknown>;
+    };
+
+    if (!interface_path) {
+      res.status(400).json({ code: 1001, message: '缺少 interface_path' });
+      return;
+    }
+
+    const iface = interfacesStore.getByPath(interface_path);
+    if (!iface) {
+      res.status(404).json({ code: 1001, message: '接口不存在: ' + interface_path });
+      return;
+    }
+
+    if (!request_body || typeof request_body !== 'object') {
+      res.status(400).json({ code: 1001, message: '请求体不能为空' });
+      return;
+    }
+
+    const taskId = uuid();
+    const linkid = reqLinkid || 'sim-' + taskId.slice(0, 8);
+    const now = new Date().toISOString();
+
+    // 持久化 task_log
+    const logEntry: TaskLog = {
+      task_id: taskId,
+      linkid,
+      path: iface.path,
+      interface_id: iface.id,
+      status: 'pending',
+      request_body: JSON.stringify(request_body),
+      prompt: '',
+      sdk_output: null,
+      sdk_trace: null,
+      callback_body: null,
+      callback_url: '',  // 模拟操作不回調
+      error_message: null,
+      created_at: now,
+      finished_at: null,
+    };
+    taskLogsStore.create(logEntry);
+
+    log.info({ taskId, linkid, path: iface.path }, 'simulate_task_created');
+
+    // 立即返回
+    res.json({ code: 0, message: '任务已创建', task_id: taskId, linkid });
+
+    // 后台异步执行
+    (async () => {
+      try {
+        taskLogsStore.updateStatus(taskId, 'processing');
+        log.info({ taskId }, 'simulate_task_processing');
+
+        const rendered = renderPrompt(iface.prompt, request_body);
+        taskLogsStore.updateResult(taskId, { prompt: rendered });
+
+        const result = await runAgent(taskId, rendered, cfg);
+
+        if (!result.success) {
+          taskLogsStore.updateResult(taskId, {
+            status: 'failed' as TaskStatus,
+            sdk_output: result.rawOutput,
+            sdk_trace: result.trace,
+            error_message: result.errorMessage || 'Claude 处理失败',
+            finished_at: new Date().toISOString(),
+          });
+          log.error({ taskId, error: result.errorMessage }, 'simulate_task_failed');
+        } else {
+          taskLogsStore.updateResult(taskId, {
+            status: 'success' as TaskStatus,
+            sdk_output: result.rawOutput,
+            sdk_trace: result.trace,
+            finished_at: new Date().toISOString(),
+          });
+          log.info({ taskId, outputLen: result.rawOutput.length }, 'simulate_task_success');
+        }
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        taskLogsStore.updateResult(taskId, {
+          status: 'failed' as TaskStatus,
+          error_message: errMsg,
+          finished_at: new Date().toISOString(),
+        });
+        log.error({ taskId, error: errMsg }, 'simulate_task_exception');
+      }
+    })();
   });
 
   // ---- 任务日志 ----
