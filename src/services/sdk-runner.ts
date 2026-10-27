@@ -60,6 +60,7 @@ curl -s -k --noproxy '*' -X POST ${docUtilUrl}/extract/txt \\
 export interface SdkResult {
   success: boolean;
   rawOutput: string;
+  trace: string;
   errorMessage?: string;
   durationMs: number;
 }
@@ -79,6 +80,7 @@ export async function runAgent(
 
   const start = Date.now();
   let fullOutput = '';
+  const traceMessages: unknown[] = [];
 
   try {
     const q = query({
@@ -93,6 +95,8 @@ export async function runAgent(
     });
 
     for await (const message of q) {
+      traceMessages.push(message);
+      log.debug({ taskId, msg: message }, 'sdk_stream_msg');
       if (message.type === 'assistant') {
         const blocks = message.message?.content;
         if (Array.isArray(blocks)) {
@@ -106,13 +110,15 @@ export async function runAgent(
     }
 
     const durationMs = Date.now() - start;
-    log.info({ taskId, durationMs, outputLen: fullOutput.length }, 'sdk_run_complete');
+    const trace = JSON.stringify(traceMessages);
+    log.info({ taskId, durationMs, outputLen: fullOutput.length, traceLen: trace.length }, 'sdk_run_complete');
 
-    return { success: true, rawOutput: fullOutput, durationMs };
+    return { success: true, rawOutput: fullOutput, trace, durationMs };
   } catch (err) {
     const durationMs = Date.now() - start;
     const message = err instanceof Error ? err.message : String(err);
-    log.error({ taskId, durationMs, error: message }, 'sdk_run_error');
-    return { success: false, rawOutput: fullOutput, errorMessage: message, durationMs };
+    const trace = JSON.stringify(traceMessages);
+    log.error({ taskId, durationMs, error: message, partialTraceLen: trace.length }, 'sdk_run_error');
+    return { success: false, rawOutput: fullOutput, trace, errorMessage: message, durationMs };
   }
 }

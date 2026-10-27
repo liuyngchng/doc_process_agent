@@ -44,7 +44,7 @@ app.use(createAdminRouter());
 app.get('/admin', (_req, res) => {
   res.sendFile('admin.html', { root: 'web' });
 });
-app.use('/static', express.static('web'));
+app.use('/static', express.static('web/static'));
 
 // 根路径重定向到管理后台
 app.get('/', (_req, res) => {

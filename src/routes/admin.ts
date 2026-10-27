@@ -103,6 +103,7 @@ export function createAdminRouter(): Router {
       ...task,
       request_body: safeParse(task.request_body),
       callback_body: safeParse(task.callback_body),
+      sdk_trace: safeParse(task.sdk_trace),
     }});
   });
 

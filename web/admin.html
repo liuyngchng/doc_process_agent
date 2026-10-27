@@ -234,6 +234,8 @@ function taskDetailHtml(t) {
         <div class="task-detail-json">${escHtml(t.prompt || '(未记录)')}</div>
         <div class="kv-section"><i class="fas fa-arrow-right"></i> Claude 输出</div>
         <div class="task-detail-json">${escHtml(t.sdk_output || '(未记录)')}</div>
+        <div class="kv-section"><i class="fas fa-arrow-right"></i> SDK 调用追踪</div>
+        <div class="task-detail-json">${escHtml(jsonFmt(t.sdk_trace))}</div>
         <div class="kv-section"><i class="fas fa-arrow-right"></i> 回调体</div>
         <div class="task-detail-json">${escHtml(jsonFmt(t.callback_body))}</div>
     `;

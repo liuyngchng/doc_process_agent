@@ -50,6 +50,7 @@ async function processItem(item: {
     taskLogsStore.updateResult(task_id, {
       status: 'failed' as TaskStatus,
       sdk_output: result.rawOutput,
+      sdk_trace: result.trace,
       error_message: errMsg,
       finished_at: nowISO(),
     });
@@ -68,6 +69,7 @@ async function processItem(item: {
   taskLogsStore.updateResult(task_id, {
     status: 'success' as TaskStatus,
     sdk_output: result.rawOutput,
+    sdk_trace: result.trace,
   });
 
   // 尝试解析 Claude 输出的 JSON
@@ -135,6 +137,7 @@ export function enqueue(iface: AgentInterface, body: ProcessRequest): { task_id:
     request_body: JSON.stringify(body),
     prompt: '',
     sdk_output: null,
+    sdk_trace: null,
     callback_body: null,
     callback_url: body.callback_url,
     error_message: null,

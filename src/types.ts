@@ -34,6 +34,7 @@ export interface TaskLog {
   request_body: string;
   prompt: string;
   sdk_output: string | null;
+  sdk_trace: string | null;
   callback_body: string | null;
   callback_url: string;
   error_message: string | null;

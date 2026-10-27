@@ -27,6 +27,7 @@ export function initStore(dataDir: string): Database.Database {
       request_body  TEXT,
       prompt        TEXT,
       sdk_output    TEXT,
+      sdk_trace     TEXT,
       callback_body TEXT,
       callback_url  TEXT,
       error_message TEXT,
@@ -34,6 +35,8 @@ export function initStore(dataDir: string): Database.Database {
       finished_at   TEXT
     );
   `);
+  // Migration: add sdk_trace column if missing (added in v0.1.x)
+  try { db.exec(`ALTER TABLE task_logs ADD COLUMN sdk_trace TEXT`); } catch { /* already exists */ }
   seedDefaults(db);
   return db;
 }
@@ -229,8 +232,8 @@ export const taskLogsStore = {
   create(log: TaskLog): void {
     db.prepare(
       `INSERT INTO task_logs
-       (task_id, linkid, path, interface_id, status, request_body, prompt, sdk_output, callback_body, callback_url, error_message, created_at, finished_at)
-       VALUES (@task_id, @linkid, @path, @interface_id, @status, @request_body, @prompt, @sdk_output, @callback_body, @callback_url, @error_message, @created_at, @finished_at)`
+       (task_id, linkid, path, interface_id, status, request_body, prompt, sdk_output, sdk_trace, callback_body, callback_url, error_message, created_at, finished_at)
+       VALUES (@task_id, @linkid, @path, @interface_id, @status, @request_body, @prompt, @sdk_output, @sdk_trace, @callback_body, @callback_url, @error_message, @created_at, @finished_at)`
     ).run(log);
   },
   updateStatus(taskId: string, status: TaskStatus): void {

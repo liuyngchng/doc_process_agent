@@ -5,8 +5,8 @@
 server:
   port: 20001
   debug: true
-  cert_file: ""
-  key_file: ""
+  cert_file: "deploy/certs/cert.pem"
+  key_file: "deploy/certs/key.pem"
 
 sys:
   max_concurrent_tasks: 5
