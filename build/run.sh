@@ -60,6 +60,30 @@ case "${1:-start}" in
       -v "$DATA_DIR:/app/data" \
       -v "$DATA_DIR/.claude:/home/agent/.claude" \
       --restart unless-stopped \
+      --add-host api.anthropic.com:127.0.0.1 \
+      --add-host api-staging.anthropic.com:127.0.0.1 \
+      --add-host anthropic.com:127.0.0.1 \
+      --add-host www.anthropic.com:127.0.0.1 \
+      --add-host claude.ai:127.0.0.1 \
+      --add-host claude.com:127.0.0.1 \
+      --add-host platform.claude.com:127.0.0.1 \
+      --add-host code.claude.com:127.0.0.1 \
+      --add-host downloads.claude.ai:127.0.0.1 \
+      --add-host docs.anthropic.com:127.0.0.1 \
+      --add-host status.anthropic.com:127.0.0.1 \
+      --add-host status.claude.com:127.0.0.1 \
+      --add-host support.anthropic.com:127.0.0.1 \
+      --add-host support.claude.com:127.0.0.1 \
+      --add-host mcp-proxy.anthropic.com:127.0.0.1 \
+      --add-host microsoft365.mcp.claude.com:127.0.0.1 \
+      --add-host slack.mcp.claude.com:127.0.0.1 \
+      --add-host api.datadoghq.com:127.0.0.1 \
+      --add-host browser-intake-us5-datadoghq.com:127.0.0.1 \
+      --add-host http-intake.logs.us5.datadoghq.com:127.0.0.1 \
+      --add-host mcp.amplitude.com:127.0.0.1 \
+      --add-host mcp.intercom.com:127.0.0.1 \
+      --add-host mcp.sentry.dev:127.0.0.1 \
+      --add-host telemetry.googleapis.com:127.0.0.1 \
       "$IMAGE"
     echo "[deploy] Started on port $HOST_PORT"
     echo ""

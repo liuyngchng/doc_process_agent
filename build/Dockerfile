@@ -83,57 +83,6 @@ RUN userdel -r ubuntu 2>/dev/null || true \
     && useradd -r -m -d /home/agent -u 1000 -s /bin/bash agent \
     && mkdir -p /home/agent/.claude && chown agent:agent /home/agent/.claude
 
-# ---- Block external telemetry / SaaS domains (private deployment) ----
-# IPv4
-RUN echo "127.0.0.1 api.anthropic.com"               >> /etc/hosts \
- && echo "127.0.0.1 api-staging.anthropic.com"        >> /etc/hosts \
- && echo "127.0.0.1 anthropic.com"                    >> /etc/hosts \
- && echo "127.0.0.1 www.anthropic.com"                >> /etc/hosts \
- && echo "127.0.0.1 claude.ai"                        >> /etc/hosts \
- && echo "127.0.0.1 claude.com"                       >> /etc/hosts \
- && echo "127.0.0.1 platform.claude.com"              >> /etc/hosts \
- && echo "127.0.0.1 code.claude.com"                  >> /etc/hosts \
- && echo "127.0.0.1 downloads.claude.ai"              >> /etc/hosts \
- && echo "127.0.0.1 docs.anthropic.com"               >> /etc/hosts \
- && echo "127.0.0.1 status.anthropic.com"             >> /etc/hosts \
- && echo "127.0.0.1 status.claude.com"                >> /etc/hosts \
- && echo "127.0.0.1 support.anthropic.com"            >> /etc/hosts \
- && echo "127.0.0.1 support.claude.com"               >> /etc/hosts \
- && echo "127.0.0.1 mcp-proxy.anthropic.com"          >> /etc/hosts \
- && echo "127.0.0.1 microsoft365.mcp.claude.com"      >> /etc/hosts \
- && echo "127.0.0.1 slack.mcp.claude.com"             >> /etc/hosts \
- && echo "127.0.0.1 api.datadoghq.com"                >> /etc/hosts \
- && echo "127.0.0.1 browser-intake-us5-datadoghq.com" >> /etc/hosts \
- && echo "127.0.0.1 http-intake.logs.us5.datadoghq.com" >> /etc/hosts \
- && echo "127.0.0.1 mcp.amplitude.com"                >> /etc/hosts \
- && echo "127.0.0.1 mcp.intercom.com"                 >> /etc/hosts \
- && echo "127.0.0.1 mcp.sentry.dev"                   >> /etc/hosts \
- && echo "127.0.0.1 telemetry.googleapis.com"         >> /etc/hosts \
- && echo "::1       api.anthropic.com"               >> /etc/hosts \
- && echo "::1       api-staging.anthropic.com"        >> /etc/hosts \
- && echo "::1       anthropic.com"                    >> /etc/hosts \
- && echo "::1       www.anthropic.com"                >> /etc/hosts \
- && echo "::1       claude.ai"                        >> /etc/hosts \
- && echo "::1       claude.com"                       >> /etc/hosts \
- && echo "::1       platform.claude.com"              >> /etc/hosts \
- && echo "::1       code.claude.com"                  >> /etc/hosts \
- && echo "::1       downloads.claude.ai"              >> /etc/hosts \
- && echo "::1       docs.anthropic.com"               >> /etc/hosts \
- && echo "::1       status.anthropic.com"             >> /etc/hosts \
- && echo "::1       status.claude.com"                >> /etc/hosts \
- && echo "::1       support.anthropic.com"            >> /etc/hosts \
- && echo "::1       support.claude.com"               >> /etc/hosts \
- && echo "::1       mcp-proxy.anthropic.com"          >> /etc/hosts \
- && echo "::1       microsoft365.mcp.claude.com"      >> /etc/hosts \
- && echo "::1       slack.mcp.claude.com"             >> /etc/hosts \
- && echo "::1       api.datadoghq.com"                >> /etc/hosts \
- && echo "::1       browser-intake-us5-datadoghq.com" >> /etc/hosts \
- && echo "::1       http-intake.logs.us5.datadoghq.com" >> /etc/hosts \
- && echo "::1       mcp.amplitude.com"                >> /etc/hosts \
- && echo "::1       mcp.intercom.com"                 >> /etc/hosts \
- && echo "::1       mcp.sentry.dev"                   >> /etc/hosts \
- && echo "::1       telemetry.googleapis.com"         >> /etc/hosts
-
 USER agent
 ENV HOME=/home/agent
 
