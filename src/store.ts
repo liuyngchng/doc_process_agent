@@ -133,6 +133,7 @@ function defaultClassifyPrompt(): string {
 \`\`\`
 
 ## 注意事项
+- 所有文本字段（fail_reason、opinion_text、desc 等）必须输出简体中文
 - 文件下载前先检查本地是否已有该文件
 - 如果文件无法下载，将 need_human 设为 true 并在 fail_reason 中说明原因
 - 不要输出任何其他内容，只输出 JSON`;
@@ -175,6 +176,7 @@ function defaultRoutePrompt(): string {
 \`\`\`
 
 ## 注意事项
+- 所有文本字段（fail_reason、opinion_text、remark 等）必须输出简体中文
 - next_node 必须从 next_nodes / person_list / org_list 中选择已存在的节点
 - 如果无法确定，将 need_human 设为 true 并在 fail_reason 中说明原因
 - 不要输出任何其他内容，只输出 JSON`;
@@ -217,6 +219,7 @@ function defaultDispatchReviewPrompt(): string {
 \`\`\`
 
 ## 注意事项
+- 所有文本字段（category、desc、suggestions 等）必须输出简体中文
 - audit_result 取值为 pass / warning
 - issues 中列出发现的问题
 - 不要输出任何其他内容，只输出 JSON`;

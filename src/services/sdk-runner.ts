@@ -119,10 +119,11 @@ curl -s -k --noproxy '*' -X POST ${docUtilUrl}/extract/txt \\
 - 文件大小上限 64MB
 
 ## 行为规范
-1. 严格按提示词要求的 JSON Schema 输出
-2. 最终结果用 \`\`\`json 代码块包裹
-3. json 代码块之外不要输出任何其他内容
-4. 如果下载失败或文件无法识别，在 JSON 中标记 need_human: true
+1. 所有文本内容（fail_reason、opinion_text、desc 等）必须使用简体中文
+2. 严格按提示词要求的 JSON Schema 输出
+3. 最终结果用 \`\`\`json 代码块包裹
+4. json 代码块之外不要输出任何其他内容
+5. 如果下载失败或文件无法识别，在 JSON 中标记 need_human: true
 `;
 }
 

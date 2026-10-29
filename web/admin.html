@@ -425,6 +425,14 @@ function statusBadgeClass(s) {
 document.getElementById('ifaceModal').addEventListener('click', function(e) { if (e.target === this) closeModal(); });
 document.getElementById('taskModal').addEventListener('click', function(e) { if (e.target === this) closeTaskModal(); });
 
+// Close modal on ESC
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        if (document.getElementById('ifaceModal').classList.contains('show')) closeModal();
+        if (document.getElementById('taskModal').classList.contains('show')) closeTaskModal();
+    }
+});
+
 // Init
 loadInterfaces();
 
