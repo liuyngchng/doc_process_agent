@@ -183,9 +183,7 @@ if [[ -n "$HTTP_PROXY_VAL" ]]; then
   export http_proxy="$HTTP_PROXY_VAL" https_proxy="$HTTPS_PROXY_VAL" no_proxy="$NO_PROXY_VAL"
 fi
 
-if [ ! -d "node_modules" ]; then
-  npm install --no-audit --no-fund
-fi
+npm install --no-audit --no-fund
 
 echo "[build] 编译 TypeScript..."
 npx tsc
