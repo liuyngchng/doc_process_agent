@@ -101,14 +101,6 @@
                         </button>
                         <span id="simStatus" class="sim-status-bar"></span>
                     </div>
-
-                    <div class="sim-history">
-                        <h3><i class="fas fa-history"></i> 模拟记录</h3>
-                        <table class="result-table">
-                            <thead><tr><th>Task ID</th><th>接口</th><th>LinkID</th><th>状态</th><th>操作</th></tr></thead>
-                            <tbody id="simTbody"><tr><td colspan="5" style="text-align:center;color:#999;">暂无记录</td></tr></tbody>
-                        </table>
-                    </div>
                 </div>
             </div>
 
@@ -322,31 +314,6 @@ async function loadSimulateTab() {
     if (!document.getElementById('simBody').value.trim()) {
         document.getElementById('simBody').value = DEFAULT_BODY;
     }
-
-    // 刷新记录
-    loadSimHistory();
-}
-
-async function loadSimHistory() {
-    const res = await fetch(API + '/tasks?limit=50');
-    const json = await res.json();
-    const list = (Array.isArray(json.data) ? json.data : [])
-        .filter(t => !t.callback_url || t.callback_url === '');
-    const tbody = document.getElementById('simTbody');
-    if (list.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;padding:24px;">暂无模拟记录</td></tr>';
-        return;
-    }
-    tbody.innerHTML = list.map(t => {
-        const taskId = escHtml(t.task_id);
-        return `<tr>
-            <td style="font-family:monospace;font-size:0.8rem;">${taskId.substring(0, 18)}...</td>
-            <td><span class="path-mono">${escHtml(t.path || '-')}</span></td>
-            <td>${escHtml(t.linkid || '-')}</td>
-            <td><span class="badge badge-${statusBadgeClass(t.status)}">${t.status}</span></td>
-            <td><button class="cfg-btn-sm" onclick="viewTask('${taskId}')"><i class="fas fa-search"></i> 详情</button></td>
-        </tr>`;
-    }).join('');
 }
 
 document.getElementById('simSubmit').addEventListener('click', async () => {
@@ -387,7 +354,6 @@ document.getElementById('simSubmit').addEventListener('click', async () => {
         const taskId = json.task_id;
         status.textContent = '任务已创建，等待执行... (ID: ' + taskId.slice(0, 8) + '...)';
         status.className = 'sim-status-bar sim-status-running';
-        loadSimHistory();
 
         // 轮询结果
         for (let i = 0; i < SIM_POLL_MAX; i++) {
@@ -405,7 +371,6 @@ document.getElementById('simSubmit').addEventListener('click', async () => {
                     document.getElementById('taskDetail').innerHTML = taskDetailHtml(t);
                     document.getElementById('taskModalTitle').innerHTML = '<i class="fas fa-flask"></i> 模拟结果';
                     document.getElementById('taskModal').classList.add('show');
-                    loadSimHistory();
                     return;
                 }
                 if (t && t.status === 'processing') {
@@ -415,7 +380,7 @@ document.getElementById('simSubmit').addEventListener('click', async () => {
         }
 
         // 超时
-        status.textContent = '轮询超时（2 分钟），请在模拟记录中查看结果';
+        status.textContent = '轮询超时（2 分钟），请在任务日志中查看结果';
         status.className = 'sim-status-bar sim-status-timeout';
     } catch (e) {
         status.textContent = '';

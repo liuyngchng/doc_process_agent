@@ -627,43 +627,16 @@ header p {
     }
     .cfg-content { padding: 20px 16px; }
     .sim-layout { flex-direction: column; }
-    .sim-input, .sim-history { flex: auto; width: 100%; }
+    .sim-input { flex: auto; width: 100%; }
 }
 
 /* ---- 模拟操作 ---- */
-.sim-layout {
-    display: flex;
-    gap: 32px;
-    align-items: flex-start;
-}
-
 .sim-input {
-    flex: 1;
-    min-width: 0;
+    max-width: 720px;
 }
 
 .sim-input .form-g textarea {
     min-height: 320px;
-}
-
-.sim-history {
-    flex: 1;
-    min-width: 0;
-}
-
-.sim-history h3 {
-    font-size: 1rem;
-    color: #2c3e50;
-    margin-bottom: 16px;
-    padding-bottom: 10px;
-    border-bottom: 2px solid #eef1f6;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.sim-history h3 i {
-    color: #4b6cb7;
 }
 
 .sim-status-bar {
