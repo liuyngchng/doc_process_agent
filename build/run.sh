@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-IMAGE="doc_process_agent:latest"
+IMAGE="doc_process_agent:0.1.0"
 CONTAINER="${CONTAINER:-doc_process_agent}"
 HOST_PORT="${HOST_PORT:-20001}"
 DATA_DIR="${DATA_DIR:-$(pwd)/data}"
@@ -12,7 +12,11 @@ NETWORK="${NETWORK:-llm_net}"
 
 # Ensure data dir exists
 mkdir -p "$DATA_DIR"
-mkdir -p "$DATA_DIR/tasks" "$DATA_DIR/logs"
+mkdir -p "$DATA_DIR/tasks" "$DATA_DIR/logs" "$DATA_DIR/.claude"
+
+# Detect host UID/GID (use current user to match data dir ownership)
+HOST_UID=$(id -u)
+HOST_GID=$(id -g)
 
 # Check cfg.yml
 if [ ! -f "$DATA_DIR/cfg.yml" ]; then
@@ -50,9 +54,11 @@ case "${1:-start}" in
     echo "[deploy] Starting container: $CONTAINER"
     docker run -d \
       --name "$CONTAINER" \
+      --user "$HOST_UID:$HOST_GID" \
       --network "$NETWORK" \
       -p "$HOST_PORT:20001" \
       -v "$DATA_DIR:/app/data" \
+      -v "$DATA_DIR/.claude:/home/agent/.claude" \
       --restart unless-stopped \
       "$IMAGE"
     echo "[deploy] Started on port $HOST_PORT"

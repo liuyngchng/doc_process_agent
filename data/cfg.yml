@@ -20,7 +20,7 @@ sys:
 
 llm:
   base_url: "http://api_adapter_g_app:16005"
-  auth_token: ""
+  auth_token: "sk-123"
   model: "deepseek-v4-pro[1m]"
   opus_model: "deepseek-v4-pro[1m]"
   sonnet_model: "deepseek-v4-pro[1m]"
