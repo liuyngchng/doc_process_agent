@@ -85,3 +85,8 @@ llm:
 
 # ---- 数据目录（可选，默认程序运行目录下的 data/） ----
 # data_dir: "/app/data"
+
+
+doc_audit:
+  api_url: "https://my_rd_cli:19004/api/proofread"               # 文档审核服务接口地址（rdCLI 审稿服务）
+  token: "ck_rd_cli_service_token"                 # 调用审核服务时的认证 token（x-api-key）

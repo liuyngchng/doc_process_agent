@@ -50,14 +50,24 @@ function buildEnv(cfg: Config): Record<string, string | undefined> {
     delete env.FILE_URL_TOKEN;
   }
 
+  // ── 文档审核服务 Token（CLAUDE.md 中通过 $DOC_AUDIT_TOKEN 引用） ──
+  if (cfg.doc_audit.token) {
+    env.DOC_AUDIT_TOKEN = cfg.doc_audit.token;
+  } else {
+    delete env.DOC_AUDIT_TOKEN;
+  }
+
   // 私有部署：关闭非必要遥测和归因头
   env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1';
   env.CLAUDE_CODE_ATTRIBUTION_HEADER = '0';
 
+  // 解决 classifier unavailable 的问题（禁用自动模式服务器）
+  env.CLAUDE_CODE_AUTO_MODE_SERVER = '0';
+
   return env;
 }
 
-function buildClaudeMd(docUtilUrl: string, renewFileUrlApi: string): string {
+function buildClaudeMd(docUtilUrl: string, renewFileUrlApi: string, docAuditUrl: string, serverPort: number): string {
   const wpsSection = renewFileUrlApi ? `
 ## 文件下载回退（WPS 接口）
 
@@ -78,6 +88,45 @@ curl -s -k --noproxy '*' -X POST '${renewFileUrlApi}' \\
 2. 用上述命令获取新下载 URL（\`jq -r '.data'\` 返回的就是 file_url）
 3. 用新的 URL 重新 curl 下载文件
 4. 如果仍然失败，标记 \`need_human: true\` 并在 \`fail_reason\` 中说明原因
+` : '';
+
+  const docAuditSection = docAuditUrl ? `
+## 文档审核服务（rdCLI 审稿）
+
+同网络下有一个文档审核服务，可对 .docx 文档进行体例格式校对（错别字、标点、语法、逻辑、GB/T 9704-2012 党政公文规范等）。服务为异步模式，**提交后通过轮询获取结果**。
+
+接口令牌通过环境变量 \`DOC_AUDIT_TOKEN\` 提供，**不要在日志或屏幕上输出此 Token**。
+
+### 提交审稿任务
+
+\`\`\`bash
+curl -s -k --noproxy '*' -X POST '${docAuditUrl}' \\
+  -H "x-api-key: $DOC_AUDIT_TOKEN" \\
+  -F "file=@正文.docx" \\
+  -F "callback_url=http://localhost:${serverPort}/api/dev/null" \\
+  -F "additional_instructions=请严格按 GB/T 9704-2012 党政机关公文格式标准进行校对"
+\`\`\`
+
+返回 JSON:
+- \`task_id\`: 审稿任务 ID
+- \`data.status\`: 初始为 \`"pending"\`
+
+### 轮询获取结果
+
+\`\`\`bash
+curl -s -k --noproxy '*' -X GET '${docAuditUrl}/task?id=<审稿task_id>' \\
+  -H "x-api-key: $DOC_AUDIT_TOKEN" | jq '.'
+\`\`\`
+
+当 \`data.status\` 为 \`"completed"\` 时，\`data.result_text\` 即为 Markdown 格式的核稿意见。
+如果 \`data.status\` 仍为 \`"pending"\` 或 \`"processing"\`，等待 15 秒后重新轮询，最多等待 5 分钟。
+
+返回 JSON（已完成后）:
+- \`code\`: 0 成功，2001 失败，2002 已撤销
+- \`data.status\`: \`"completed"\` | \`"failed"\` | \`"cancelled"\`
+- \`data.result_text\`: 核稿意见全文（Markdown），仅 completed 时有
+- \`data.file_name\`: 文件名
+- \`data.tokens\`: Token 消耗统计
 ` : '';
 
   return `# doc_process_agent 工作区
@@ -117,7 +166,7 @@ curl -s -k --noproxy '*' -X POST ${docUtilUrl}/extract/txt \\
 - 用 \`--noproxy '*'\` 绕过代理直连
 - 对下载的每个文件都调用此服务提取文本
 - 文件大小上限 64MB
-
+${docAuditSection}
 ## 行为规范
 1. 所有文本内容（fail_reason、opinion_text、desc 等）必须使用简体中文
 2. 严格按提示词要求的 JSON Schema 输出
@@ -143,10 +192,10 @@ export async function runAgent(
   const workDir = join(cfg.sys.data_dir, 'tasks', taskId);
   await mkdir(workDir, { recursive: true });
 
-  // 写入 CLAUDE.md（含 doc_util 解析服务地址 + 文件 URL 续期回退说明）
+  // 写入 CLAUDE.md（含 doc_util 解析服务地址 + 文件 URL 续期回退说明 + rdCLI 审稿服务说明）
   await writeFile(
     join(workDir, 'CLAUDE.md'),
-    buildClaudeMd(cfg.sys.doc_util_url, cfg.sys.renew_file_url_api),
+    buildClaudeMd(cfg.sys.doc_util_url, cfg.sys.renew_file_url_api, cfg.doc_audit.api_url, cfg.server.port),
     'utf8',
   );
 

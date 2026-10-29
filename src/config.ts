@@ -38,6 +38,10 @@ interface CfgFile {
     disable_nonessential_traffic?: boolean;
     attribution_header?: boolean;
   };
+  doc_audit?: {
+    api_url?: string;
+    token?: string;
+  };
 }
 
 export interface Config {
@@ -72,6 +76,10 @@ export interface Config {
     timeout_ms: number;
     disable_nonessential_traffic: boolean;
     attribution_header: boolean;
+  };
+  doc_audit: {
+    api_url: string;
+    token: string;
   };
 }
 
@@ -159,6 +167,10 @@ export function loadConfig(): Config {
       timeout_ms: envInt('API_TIMEOUT_MS', l.timeout_ms ?? 600000),
       disable_nonessential_traffic: envBool('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', l.disable_nonessential_traffic ?? true),
       attribution_header: envBool('CLAUDE_CODE_ATTRIBUTION_HEADER', l.attribution_header ?? false),
+    },
+    doc_audit: {
+      api_url: env('DOC_AUDIT_URL', cfg.doc_audit?.api_url ?? ''),
+      token: env('DOC_AUDIT_TOKEN', cfg.doc_audit?.token ?? ''),
     },
   };
 }
