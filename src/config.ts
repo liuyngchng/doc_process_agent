@@ -15,15 +15,15 @@ interface CfgFile {
   sys?: {
     max_concurrent_tasks?: number;
     max_pending_tasks?: number;
-    callback_url_token?: string;
     callback_retries?: number;
     callback_retry_interval_sec?: number;
     retention_days?: number;
     model?: string;
     data_dir?: string;
     doc_util_url?: string;
-    wps_download_url?: string;
-    wps_download_token?: string;
+    renew_file_url_api?: string;
+    file_url_token?: string;
+    api_token?: string;
   };
   llm?: {
     base_url?: string;
@@ -50,15 +50,15 @@ export interface Config {
   sys: {
     max_concurrent_tasks: number;
     max_pending_tasks: number;
-    callback_url_token: string;
     callback_retries: number;
     callback_retry_interval_sec: number;
     retention_days: number;
     model: string;
     data_dir: string;
     doc_util_url: string;
-    wps_download_url: string;
-    wps_download_token: string;
+    renew_file_url_api: string;
+    file_url_token: string;
+    api_token: string;
   };
   llm: {
     base_url: string;
@@ -137,15 +137,15 @@ export function loadConfig(): Config {
     sys: {
       max_concurrent_tasks: envInt('MAX_CONCURRENT_TASKS', y.max_concurrent_tasks ?? 5),
       max_pending_tasks: envInt('MAX_PENDING_TASKS', y.max_pending_tasks ?? 10),
-      callback_url_token: env('CALLBACK_URL_TOKEN', y.callback_url_token ?? ''),
       callback_retries: envInt('CALLBACK_RETRIES', y.callback_retries ?? 3),
       callback_retry_interval_sec: envInt('CALLBACK_RETRY_INTERVAL_SEC', y.callback_retry_interval_sec ?? 2),
       retention_days: envInt('RETENTION_DAYS', y.retention_days ?? 30),
       model: env('MODEL', y.model ?? 'claude-sonnet-4-20250514'),
       data_dir: env('DATA_DIR', y.data_dir ?? DATA_DIR),
       doc_util_url: env('DOC_UTIL_URL', y.doc_util_url ?? 'https://doc_util_server:8443'),
-      wps_download_url: env('WPS_DOWNLOAD_URL', y.wps_download_url ?? ''),
-      wps_download_token: env('WPS_DOWNLOAD_TOKEN', y.wps_download_token ?? ''),
+      renew_file_url_api: env('RENEW_FILE_URL_API', y.renew_file_url_api ?? ''),
+      file_url_token: env('FILE_URL_TOKEN', y.file_url_token ?? ''),
+      api_token: env('API_TOKEN', y.api_token ?? ''),
     },
     llm: {
       base_url: llmBaseUrl,

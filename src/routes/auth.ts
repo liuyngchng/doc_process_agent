@@ -161,6 +161,25 @@ export function adminOnlyMiddleware(req: Request, res: Response, next: () => voi
   next();
 }
 
+/**
+ * 对外接口鉴权中间件（Authorization: Bearer <api_token>）
+ * token 由 cfg.yml 的 sys.api_token 配置，留空则不校验（开发便利）。
+ */
+export function apiTokenMiddleware(apiToken: string) {
+  return (req: Request, res: Response, next: () => void) => {
+    if (!apiToken) {
+      next();
+      return;
+    }
+    const header = req.headers.authorization;
+    if (!header || header !== 'Bearer ' + apiToken) {
+      res.status(401).json({ code: 1003, message: 'Unauthorized: 无效或缺失的 Authorization Bearer Token', task_id: '', linkid: '' });
+      return;
+    }
+    next();
+  };
+}
+
 /** 从请求上下文获取当前用户 */
 export function getCurrentUser(req: Request): TokenPayload | undefined {
   return (req as unknown as Record<string, unknown>).user as TokenPayload | undefined;

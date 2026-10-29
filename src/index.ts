@@ -11,7 +11,7 @@ import { createProcessRouter } from './routes/process.js';
 import { createHealthRouter } from './routes/health.js';
 import { createTasksRouter } from './routes/tasks.js';
 import { createAdminRouter } from './routes/admin.js';
-import { createAuthRouter, authWebMiddleware } from './routes/auth.js';
+import { createAuthRouter, authWebMiddleware, apiTokenMiddleware } from './routes/auth.js';
 
 const cfg = loadConfig();
 ensureDirs(cfg);
@@ -47,7 +47,8 @@ app.get('/login', (_req, res) => {
 // 静态资源（公开，登录页也需要）
 app.use('/static', express.static('web/static'));
 
-// 对外业务接口（外部系统调用，无 Cookie）
+// 对外业务接口（外部系统调用，Bearer Token 鉴权）
+app.use('/api/v1', apiTokenMiddleware(cfg.sys.api_token));
 app.use(createProcessRouter(cfg));
 
 // 任务管理 API（外部系统调用）

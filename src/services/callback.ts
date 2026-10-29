@@ -77,7 +77,7 @@ export async function deliverCallback(
 ): Promise<CallbackResult> {
   const maxRetries = cfg.sys.callback_retries;
   const baseInterval = cfg.sys.callback_retry_interval_sec * 1000;
-  const token = cfg.sys.callback_url_token || undefined;
+  const token = cfg.sys.file_url_token || undefined;
   const bodyStr = JSON.stringify(payload);
 
   log.info({ taskId: payload.task_id, url: callbackUrl }, 'callback_start');

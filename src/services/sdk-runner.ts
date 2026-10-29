@@ -43,11 +43,11 @@ function buildEnv(cfg: Config): Record<string, string | undefined> {
   // ═══════════════════════════════════════════════════════════════
   delete env.ANTHROPIC_API_KEY;
 
-  // ── WPS 文件下载回退令牌（CLAUDE.md 中通过 $WPS_DOWNLOAD_TOKEN 引用） ──
-  if (cfg.sys.wps_download_token) {
-    env.WPS_DOWNLOAD_TOKEN = cfg.sys.wps_download_token;
+  // ── 文件下载 Token（CLAUDE.md 中通过 $FILE_URL_TOKEN 引用） ──
+  if (cfg.sys.file_url_token) {
+    env.FILE_URL_TOKEN = cfg.sys.file_url_token;
   } else {
-    delete env.WPS_DOWNLOAD_TOKEN;
+    delete env.FILE_URL_TOKEN;
   }
 
   // 私有部署：关闭非必要遥测和归因头
@@ -57,19 +57,19 @@ function buildEnv(cfg: Config): Record<string, string | undefined> {
   return env;
 }
 
-function buildClaudeMd(docUtilUrl: string, wpsDownloadUrl: string): string {
-  const wpsSection = wpsDownloadUrl ? `
+function buildClaudeMd(docUtilUrl: string, renewFileUrlApi: string): string {
+  const wpsSection = renewFileUrlApi ? `
 ## 文件下载回退（WPS 接口）
 
 如果通过请求中的 \`file_url\` 直接下载文件失败（超时、403、连接被拒等），
 可以尝试通过 WPS 接口用 \`file_id\` 重新获取新的下载链接。
 
-接口令牌通过环境变量 \`WPS_DOWNLOAD_TOKEN\` 提供，**不要在日志或屏幕上输出此 Token**。
+接口令牌通过环境变量 \`FILE_URL_TOKEN\` 提供，**不要在日志或屏幕上输出此 Token**。
 
 \`\`\`bash
-curl -s -k --noproxy '*' -X POST '${wpsDownloadUrl}' \\
+curl -s -k --noproxy '*' -X POST '${renewFileUrlApi}' \\
   -H 'Content-Type: application/json' \\
-  -H "Authorization: Bearer $WPS_DOWNLOAD_TOKEN" \\
+  -H "Authorization: Bearer $FILE_URL_TOKEN" \\
   -d '{"fileId": "<文件ID>", "getFileUrlType": "download"}' | jq -r '.data'
 \`\`\`
 
@@ -86,6 +86,8 @@ curl -s -k --noproxy '*' -X POST '${wpsDownloadUrl}' \\
 
 ## 文件下载
 - 对方传递的 JSON 中的文件 URL 已开放白名单，无需认证
+- 如果文件 URL 需要认证，可用环境变量 \`FILE_URL_TOKEN\`（Bearer Token）下载：
+  \`curl -s -k --noproxy '*' -H "Authorization: Bearer $FILE_URL_TOKEN" '<file_url>' -o 文件名\`
 - 用 curl 下载文件到当前工作目录
 ${wpsSection}
 ## 文档解析服务
@@ -140,10 +142,10 @@ export async function runAgent(
   const workDir = join(cfg.sys.data_dir, 'tasks', taskId);
   await mkdir(workDir, { recursive: true });
 
-  // 写入 CLAUDE.md（含 doc_util 解析服务地址 + WPS 下载回退说明）
+  // 写入 CLAUDE.md（含 doc_util 解析服务地址 + 文件 URL 续期回退说明）
   await writeFile(
     join(workDir, 'CLAUDE.md'),
-    buildClaudeMd(cfg.sys.doc_util_url, cfg.sys.wps_download_url),
+    buildClaudeMd(cfg.sys.doc_util_url, cfg.sys.renew_file_url_api),
     'utf8',
   );
 
