@@ -312,6 +312,15 @@ async function loadSimulateTab() {
         document.getElementById('simLinkid').value = buildSimLinkid();
     }
     if (!document.getElementById('simBody').value.trim()) {
+        // 尝试从 data/mock.json 加载模板
+        try {
+            const mr = await fetch(API + '/mock');
+            const mj = await mr.json();
+            if (mj.code === 0 && mj.data) {
+                document.getElementById('simBody').value = JSON.stringify(mj.data, null, 2);
+                return;
+            }
+        } catch { /* 无 mock.json 或加载失败，使用内置模板 */ }
         document.getElementById('simBody').value = DEFAULT_BODY;
     }
 }

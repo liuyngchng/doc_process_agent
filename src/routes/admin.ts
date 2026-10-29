@@ -1,4 +1,6 @@
 import { Router, Request, Response } from 'express';
+import { readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { v4 as uuid } from 'uuid';
 import { interfacesStore, taskLogsStore } from '../store.js';
 import { renderPrompt } from '../services/prompt-engine.js';
@@ -80,6 +82,23 @@ export function createAdminRouter(cfg: Config): Router {
   });
 
   // ---- 模拟操作 ----
+
+  // 读取 data/mock.json 作为模拟请求体默认值（文件可不存在）
+  router.get('/admin/mock', (_req: Request, res: Response) => {
+    const mockFile = join(cfg.sys.data_dir, 'mock.json');
+    if (!existsSync(mockFile)) {
+      res.status(404).json({ code: 1001, message: 'mock.json 不存在' });
+      return;
+    }
+    try {
+      const raw = readFileSync(mockFile, 'utf8');
+      const parsed = JSON.parse(raw);
+      res.json({ code: 0, data: parsed });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(400).json({ code: 1001, message: 'mock.json 解析失败: ' + msg });
+    }
+  });
 
   router.post('/admin/simulate', (req: Request, res: Response) => {
     const { interface_path, linkid: reqLinkid, request_body } = req.body as {
