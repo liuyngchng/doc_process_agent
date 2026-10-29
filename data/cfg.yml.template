@@ -46,6 +46,13 @@ sys:
   # 文档解析服务地址（自签名 HTTPS），Claude 通过 curl -k 调用提取 PDF/DOCX 文本
   doc_util_url: "https://:docutil-server:8080"
 
+  # 文件下载回退 — WPS 接口地址（留空则禁用此功能）
+  # 当 file_url 直连下载失败时，Agent 会自动调用此接口用 file_id 重新生成下载链接
+  wps_download_url: "https://trainxc.oapro.petrochina/sys-manager/api/v1/wps/getDownload"
+
+  # WPS 接口认证 Bearer Token（可被环境变量 WPS_DOWNLOAD_TOKEN 覆盖）
+  wps_download_token: ""
+
 # ---- LLM 适配器配置（必填，指向 Anthropic 协议兼容网关） ----
 # 本服务通过网关调用 LLM，base_url 留空则启动时报错退出。
 llm:

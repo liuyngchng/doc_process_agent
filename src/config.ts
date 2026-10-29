@@ -22,6 +22,8 @@ interface CfgFile {
     model?: string;
     data_dir?: string;
     doc_util_url?: string;
+    wps_download_url?: string;
+    wps_download_token?: string;
   };
   llm?: {
     base_url?: string;
@@ -55,6 +57,8 @@ export interface Config {
     model: string;
     data_dir: string;
     doc_util_url: string;
+    wps_download_url: string;
+    wps_download_token: string;
   };
   llm: {
     base_url: string;
@@ -140,6 +144,8 @@ export function loadConfig(): Config {
       model: env('MODEL', y.model ?? 'claude-sonnet-4-20250514'),
       data_dir: env('DATA_DIR', y.data_dir ?? DATA_DIR),
       doc_util_url: env('DOC_UTIL_URL', y.doc_util_url ?? 'https://doc_util_server:8443'),
+      wps_download_url: env('WPS_DOWNLOAD_URL', y.wps_download_url ?? ''),
+      wps_download_token: env('WPS_DOWNLOAD_TOKEN', y.wps_download_token ?? ''),
     },
     llm: {
       base_url: llmBaseUrl,

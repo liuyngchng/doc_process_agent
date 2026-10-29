@@ -43,6 +43,13 @@ function buildEnv(cfg: Config): Record<string, string | undefined> {
   // ═══════════════════════════════════════════════════════════════
   delete env.ANTHROPIC_API_KEY;
 
+  // ── WPS 文件下载回退令牌（CLAUDE.md 中通过 $WPS_DOWNLOAD_TOKEN 引用） ──
+  if (cfg.sys.wps_download_token) {
+    env.WPS_DOWNLOAD_TOKEN = cfg.sys.wps_download_token;
+  } else {
+    delete env.WPS_DOWNLOAD_TOKEN;
+  }
+
   // 私有部署：关闭非必要遥测和归因头
   env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1';
   env.CLAUDE_CODE_ATTRIBUTION_HEADER = '0';
@@ -50,7 +57,29 @@ function buildEnv(cfg: Config): Record<string, string | undefined> {
   return env;
 }
 
-function buildClaudeMd(docUtilUrl: string): string {
+function buildClaudeMd(docUtilUrl: string, wpsDownloadUrl: string): string {
+  const wpsSection = wpsDownloadUrl ? `
+## 文件下载回退（WPS 接口）
+
+如果通过请求中的 \`file_url\` 直接下载文件失败（超时、403、连接被拒等），
+可以尝试通过 WPS 接口用 \`file_id\` 重新获取新的下载链接。
+
+接口令牌通过环境变量 \`WPS_DOWNLOAD_TOKEN\` 提供，**不要在日志或屏幕上输出此 Token**。
+
+\`\`\`bash
+curl -s -k --noproxy '*' -X POST '${wpsDownloadUrl}' \\
+  -H 'Content-Type: application/json' \\
+  -H "Authorization: Bearer $WPS_DOWNLOAD_TOKEN" \\
+  -d '{"fileId": "<文件ID>", "getFileUrlType": "download"}' | jq -r '.data'
+\`\`\`
+
+步骤：
+1. 从请求 JSON 的 \`files[].file_id\` 字段获取文件 ID
+2. 用上述命令获取新下载 URL（\`jq -r '.data'\` 返回的就是 file_url）
+3. 用新的 URL 重新 curl 下载文件
+4. 如果仍然失败，标记 \`need_human: true\` 并在 \`fail_reason\` 中说明原因
+` : '';
+
   return `# doc_process_agent 工作区
 
 你是电子公文处理智能体，运行在这个临时工作目录中。
@@ -58,7 +87,7 @@ function buildClaudeMd(docUtilUrl: string): string {
 ## 文件下载
 - 对方传递的 JSON 中的文件 URL 已开放白名单，无需认证
 - 用 curl 下载文件到当前工作目录
-
+${wpsSection}
 ## 文档解析服务
 
 同网络下有一个文档解析服务，可将 PDF / DOCX / .doc（旧版 Word）转为纯文本，
@@ -111,8 +140,12 @@ export async function runAgent(
   const workDir = join(cfg.sys.data_dir, 'tasks', taskId);
   await mkdir(workDir, { recursive: true });
 
-  // 写入 CLAUDE.md（含 doc_util 解析服务地址）
-  await writeFile(join(workDir, 'CLAUDE.md'), buildClaudeMd(cfg.sys.doc_util_url), 'utf8');
+  // 写入 CLAUDE.md（含 doc_util 解析服务地址 + WPS 下载回退说明）
+  await writeFile(
+    join(workDir, 'CLAUDE.md'),
+    buildClaudeMd(cfg.sys.doc_util_url, cfg.sys.wps_download_url),
+    'utf8',
+  );
 
   log.info({ taskId }, 'sdk_run_start');
 
