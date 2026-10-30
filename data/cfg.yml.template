@@ -48,7 +48,7 @@ sys:
 
   # 文件下载回退 — 重新生成 file_url 的接口地址（留空则禁用此功能）
   # 当 file_url 直连下载失败时，Agent 会自动调用此接口用 file_id 重新生成下载链接
-  renew_file_url_api: "https://trainxc.oapro.petrochina/sys-manager/api/v1/wps/getDownload"
+  renew_file_url_api: "https://123.456/file/download"
 
   # 文件下载 / renew_file_url / 回调对方接口 共用的认证 Bearer Token
   # （可被环境变量 FILE_URL_TOKEN 覆盖）
