@@ -25,7 +25,7 @@ server:
 
 # ---- 系统配置 ----
 sys:
-  # Worker 数量 = 同时调用 Claude Agent SDK 的任务数上限
+  # Worker 数量 = 同时调用 Agent SDK 的任务数上限
   max_concurrent_tasks: 5
 
   # 任务总数上限 (pending + processing)，超过后拒单返回 code=2002
@@ -39,9 +39,6 @@ sys:
 
   # 运行时数据保留天数（task_logs + files 自动清理）
   retention_days: 30
-
-  # Claude Code Agent SDK 默认模型
-  model: "claude-sonnet-4-20250514"
 
   # 文档解析服务地址（自签名 HTTPS），Claude 通过 curl -k 调用提取 PDF/DOCX 文本
   doc_util_url: "https://:docutil-server:8080"

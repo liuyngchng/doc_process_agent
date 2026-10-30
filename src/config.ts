@@ -19,7 +19,6 @@ interface CfgFile {
     callback_retries?: number;
     callback_retry_interval_sec?: number;
     retention_days?: number;
-    model?: string;
     data_dir?: string;
     doc_util_url?: string;
     renew_file_url_api?: string;
@@ -59,7 +58,6 @@ export interface Config {
     callback_retries: number;
     callback_retry_interval_sec: number;
     retention_days: number;
-    model: string;
     data_dir: string;
     doc_util_url: string;
     renew_file_url_api: string;
@@ -151,7 +149,6 @@ export function loadConfig(): Config {
       callback_retries: envInt('CALLBACK_RETRIES', y.callback_retries ?? 3),
       callback_retry_interval_sec: envInt('CALLBACK_RETRY_INTERVAL_SEC', y.callback_retry_interval_sec ?? 2),
       retention_days: envInt('RETENTION_DAYS', y.retention_days ?? 30),
-      model: env('MODEL', y.model ?? 'claude-sonnet-4-20250514'),
       data_dir: env('DATA_DIR', y.data_dir ?? DATA_DIR),
       doc_util_url: env('DOC_UTIL_URL', y.doc_util_url ?? 'https://doc_util_server:8443'),
       renew_file_url_api: env('RENEW_FILE_URL_API', y.renew_file_url_api ?? ''),
@@ -161,7 +158,7 @@ export function loadConfig(): Config {
     llm: {
       base_url: llmBaseUrl,
       auth_token: env('ANTHROPIC_AUTH_TOKEN', l.auth_token ?? ''),
-      model: env('ANTHROPIC_MODEL', l.model ?? 'claude-sonnet-4-20250514'),
+      model: env('ANTHROPIC_MODEL', l.model ?? 'deepseek-v4-pro'),
       opus_model: env('ANTHROPIC_DEFAULT_OPUS_MODEL', l.opus_model ?? ''),
       sonnet_model: env('ANTHROPIC_DEFAULT_SONNET_MODEL', l.sonnet_model ?? ''),
       haiku_model: env('ANTHROPIC_DEFAULT_HAIKU_MODEL', l.haiku_model ?? ''),

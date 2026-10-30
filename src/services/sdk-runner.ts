@@ -289,7 +289,7 @@ export async function runAgent(
         cwd: workDir,
         permissionMode: 'bypassPermissions',
         tools: { type: 'preset', preset: 'claude_code' },
-        model: cfg.llm.model || cfg.sys.model,
+        model: cfg.llm.model,
         env: buildEnv(cfg),
         systemPrompt: { type: 'preset', preset: 'claude_code' },
       },
