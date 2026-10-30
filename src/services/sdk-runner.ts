@@ -190,6 +190,14 @@ function ts(): string {
   return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}.${String(d.getMilliseconds()).padStart(3,'0')}`;
 }
 
+/** 需要过滤掉的 SDK 内部系统消息（度量/调试类，对用户无意义）*/
+const NOISE_SYSTEM_SUBTYPES = new Set([
+  'thinking_tokens',
+  'stream_event',
+  'token_count',
+  'model_usage',
+]);
+
 /** 把单条 SDK 消息拆解成人类可读的 StreamEntry 数组 */
 function parseMessage(msg: Record<string, unknown>): StreamEntry[] {
   const entries: StreamEntry[] = [];
@@ -212,6 +220,7 @@ function parseMessage(msg: Record<string, unknown>): StreamEntry[] {
           tool_input: input,
         });
       }
+      // thinking / redacted_thinking 等内部推理 block 直接忽略，不展示
     }
   } else if (msg.type === 'user') {
     // user 消息可能包含 tool_result
@@ -220,7 +229,6 @@ function parseMessage(msg: Record<string, unknown>): StreamEntry[] {
     if (Array.isArray(content)) {
       for (const block of content as Array<Record<string, unknown>>) {
         if (block.type === 'tool_result') {
-          const toolUseId = String(block.tool_use_id ?? '');
           const isError = !!block.is_error;
           let output = '';
           if (Array.isArray(block.content)) {
@@ -242,8 +250,9 @@ function parseMessage(msg: Record<string, unknown>): StreamEntry[] {
       }
     }
   } else if (msg.type === 'system') {
-    const subtype = String(msg.subtype ?? msg.message ?? '');
-    if (subtype) {
+    const subtype = String(msg.subtype ?? '');
+    // 过滤内部度量消息（thinking_tokens 等），只保留有意义的系统消息
+    if (subtype && !NOISE_SYSTEM_SUBTYPES.has(subtype)) {
       entries.push({ ts: now, type: 'system', text: subtype });
     }
   }
@@ -288,7 +297,6 @@ export async function runAgent(
 
     for await (const message of q) {
       traceMessages.push(message);
-      log.debug({ taskId, msg: message }, 'sdk_stream_msg');
 
       // 实时回调：把 SDK 消息拆成可读条目
       if (onStreamEntry) {
