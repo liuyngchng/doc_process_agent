@@ -651,6 +651,171 @@ header p {
     color: #2a4365;
 }
 
-.sim-status-timeout {
-    color: #975a16;
+/* ---- 实时执行过程 — 对话风格 ---- */
+.stream-modal-body {
+    display: flex;
+    flex-direction: column;
+}
+
+.stream-status-bar {
+    padding: 8px 0;
+    font-size: 0.85rem;
+    min-height: 28px;
+}
+
+.stream-status-live {
+    color: #2a4365;
+}
+
+.stream-status-done {
+    color: #888;
+}
+
+.stream-messages {
+    flex: 1;
+    background: #f5f7fa;
+    border-radius: 12px;
+    padding: 16px 18px;
+    min-height: 320px;
+    max-height: 55vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.stream-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 120px;
+    color: #aaa;
+    font-size: 0.9rem;
+}
+
+/* 系统消息 — 居中灰字 */
+.stream-system {
+    text-align: center;
+    font-size: 0.78rem;
+    color: #999;
+    padding: 4px 0;
+}
+
+.stream-system .fas {
+    margin-right: 4px;
+}
+
+/* 消息时间戳 */
+.stream-ts {
+    float: right;
+    font-size: 0.7rem;
+    color: #aaa;
+    font-weight: 400;
+    margin-left: 12px;
+}
+
+/* 气泡容器 */
+.stream-bubble {
+    max-width: 85%;
+    border-radius: 12px;
+    padding: 12px 16px;
+    font-size: 0.87rem;
+    line-height: 1.55;
+    animation: streamMsgIn 0.25s ease-out;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.stream-bubble-head {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #555;
+    margin-bottom: 6px;
+}
+
+.stream-bubble-head .fas {
+    margin-right: 4px;
+}
+
+.stream-bubble-body {
+    color: #333;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* Agent 文本 — 左侧白色气泡 */
+.stream-bubble-text {
+    background: #fff;
+    border: 1px solid #e2e6ed;
+    align-self: flex-start;
+    border-bottom-left-radius: 4px;
+}
+
+.stream-bubble-text .stream-bubble-head { color: #4b6cb7; }
+
+/* 工具调用 — 蓝色边框卡片 */
+.stream-bubble-tool {
+    background: linear-gradient(135deg, #f0f4ff 0%, #e8f0fe 100%);
+    border: 1px solid #c5d5f0;
+    align-self: flex-start;
+    border-bottom-left-radius: 4px;
+}
+
+.stream-bubble-tool .stream-bubble-head { color: #3a6ea5; }
+
+.stream-tool-body {
+    color: #2a4365;
+    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+    font-size: 0.82rem;
+}
+
+.stream-tool-input {
+    margin-top: 8px;
+    padding: 8px 10px;
+    background: rgba(255,255,255,0.6);
+    border-radius: 6px;
+    font-size: 0.78rem;
+    max-height: 60px;
+    overflow-y: auto;
+}
+
+.stream-tool-input code {
+    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+    color: #555;
+    word-break: break-all;
+}
+
+/* 工具结果 — 灰色折叠块 */
+.stream-bubble-result {
+    background: #f4f4f4;
+    border: 1px solid #ddd;
+    align-self: flex-start;
+    border-bottom-left-radius: 4px;
+}
+
+.stream-bubble-result .stream-bubble-head { color: #8e8e8e; }
+
+.stream-result-body {
+    color: #666;
+    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+    font-size: 0.8rem;
+}
+
+/* 错误 — 红色 */
+.stream-bubble-error {
+    background: #fff5f5;
+    border: 1px solid #fed7d7;
+    align-self: stretch;
+    border-bottom-left-radius: 4px;
+}
+
+.stream-bubble-error .stream-bubble-head { color: #c62828; }
+
+@keyframes streamMsgIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* 响应式 — 小程序端气泡不可太宽 */
+@media (max-width: 600px) {
+    .stream-bubble { max-width: 95%; }
 }

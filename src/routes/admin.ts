@@ -7,7 +7,7 @@ import { renderPrompt } from '../services/prompt-engine.js';
 import { runAgent } from '../services/sdk-runner.js';
 import { getLogger } from '../logger.js';
 import type { Config } from '../config.js';
-import type { TaskLog, TaskStatus } from '../types.js';
+import type { TaskLog, TaskStatus, StreamEntry } from '../types.js';
 
 const log = getLogger();
 
@@ -138,6 +138,7 @@ export function createAdminRouter(cfg: Config): Router {
       prompt: '',
       sdk_output: null,
       sdk_trace: null,
+      sdk_stream: null,
       callback_body: null,
       callback_url: '',  // 模拟操作不回調
       error_message: null,
@@ -160,7 +161,9 @@ export function createAdminRouter(cfg: Config): Router {
         const rendered = renderPrompt(iface.prompt, request_body);
         taskLogsStore.updateResult(taskId, { prompt: rendered });
 
-        const result = await runAgent(taskId, rendered, cfg);
+        const result = await runAgent(taskId, rendered, cfg, (entries) => {
+          taskLogsStore.appendStream(taskId, entries);
+        });
 
         if (!result.success) {
           taskLogsStore.updateResult(taskId, {
@@ -222,7 +225,19 @@ export function createAdminRouter(cfg: Config): Router {
       request_body: safeParse(task.request_body),
       callback_body: safeParse(task.callback_body),
       sdk_trace: safeParse(task.sdk_trace),
+      sdk_stream: safeParse(task.sdk_stream),
     }});
+  });
+
+  // 实时流式输出（轮询接口）
+  router.get('/admin/tasks/:task_id/stream', (req: Request, res: Response) => {
+    const task = taskLogsStore.get(req.params.task_id);
+    if (!task) {
+      res.status(404).json({ code: 1001, message: '任务不存在' });
+      return;
+    }
+    const stream = taskLogsStore.getStream(req.params.task_id);
+    res.json({ code: 0, data: { status: task.status, stream } });
   });
 
   return router;

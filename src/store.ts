@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import { join } from 'node:path';
 import { v4 as uuid } from 'uuid';
 import bcrypt from 'bcryptjs';
-import type { AgentInterface, TaskLog, TaskStatus, User } from './types.js';
+import type { AgentInterface, TaskLog, TaskStatus, User, StreamEntry } from './types.js';
 
 let db: Database.Database;
 
@@ -54,6 +54,8 @@ export function initStore(dataDir: string): Database.Database {
   `);
   // Migration: add sdk_trace column if missing (added in v0.1.x)
   try { db.exec(`ALTER TABLE task_logs ADD COLUMN sdk_trace TEXT`); } catch { /* already exists */ }
+  // Migration: add sdk_stream column for real-time agent output (added in v0.2.x)
+  try { db.exec(`ALTER TABLE task_logs ADD COLUMN sdk_stream TEXT`); } catch { /* already exists */ }
   // Migration: add users / config tables if missing (added in v0.2.x)
   try { db.exec(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, role INTEGER DEFAULT 0, note TEXT DEFAULT '', must_change_pwd INTEGER DEFAULT 0, created_at TEXT)`); } catch { /* already exists */ }
   try { db.exec(`CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT NOT NULL, note TEXT)`); } catch { /* already exists */ }
@@ -346,6 +348,19 @@ export const taskLogsStore = {
       `SELECT * FROM task_logs WHERE status IN ('pending', 'processing') ORDER BY created_at ASC`
     ).all() as TaskLog[];
   },
+  /** 追加 SDK 流式输出条目到任务的 sdk_stream JSON 数组 */
+  appendStream(taskId: string, entries: StreamEntry[]): void {
+    if (!entries || entries.length === 0) return;
+    const row = db.prepare('SELECT sdk_stream FROM task_logs WHERE task_id = ?').get(taskId) as { sdk_stream: string | null } | undefined;
+    const existing: StreamEntry[] = row?.sdk_stream ? safeParseArray(row.sdk_stream) : [];
+    const updated = existing.concat(entries);
+    db.prepare('UPDATE task_logs SET sdk_stream = ? WHERE task_id = ?').run(JSON.stringify(updated), taskId);
+  },
+  /** 读取任务当前已积累的 SDK 流式输出 */
+  getStream(taskId: string): StreamEntry[] {
+    const row = db.prepare('SELECT sdk_stream FROM task_logs WHERE task_id = ?').get(taskId) as { sdk_stream: string | null } | undefined;
+    return row?.sdk_stream ? safeParseArray(row.sdk_stream) : [];
+  },
 };
 
 // ============================================================
@@ -389,3 +404,13 @@ export const configStore = {
     db.prepare('INSERT INTO config (key, value, note) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, note = excluded.note').run(key, value, note ?? '');
   },
 };
+
+/** 安全解析 JSON 数组，失败时返回空数组 */
+function safeParseArray(s: string): StreamEntry[] {
+  try {
+    const parsed = JSON.parse(s);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}

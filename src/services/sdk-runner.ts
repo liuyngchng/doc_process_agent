@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { getLogger } from '../logger.js';
 import type { Config } from '../config.js';
+import type { StreamEntry } from '../types.js';
 
 const log = getLogger();
 
@@ -184,10 +185,77 @@ export interface SdkResult {
   durationMs: number;
 }
 
+function ts(): string {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}.${String(d.getMilliseconds()).padStart(3,'0')}`;
+}
+
+/** 把单条 SDK 消息拆解成人类可读的 StreamEntry 数组 */
+function parseMessage(msg: Record<string, unknown>): StreamEntry[] {
+  const entries: StreamEntry[] = [];
+  const now = ts();
+
+  if (msg.type === 'assistant') {
+    const message = msg.message as Record<string, unknown> | undefined;
+    const blocks = (message?.content as Array<Record<string, unknown>>) ?? [];
+    for (const block of blocks) {
+      if (block.type === 'text' && typeof block.text === 'string') {
+        entries.push({ ts: now, type: 'text', text: block.text });
+      } else if (block.type === 'tool_use') {
+        const name = String(block.name ?? 'unknown');
+        const input = JSON.stringify(block.input ?? {});
+        entries.push({
+          ts: now,
+          type: 'tool',
+          text: `调用工具: ${name}`,
+          tool_name: name,
+          tool_input: input,
+        });
+      }
+    }
+  } else if (msg.type === 'user') {
+    // user 消息可能包含 tool_result
+    const message = msg.message as Record<string, unknown> | undefined;
+    const content = message?.content;
+    if (Array.isArray(content)) {
+      for (const block of content as Array<Record<string, unknown>>) {
+        if (block.type === 'tool_result') {
+          const toolUseId = String(block.tool_use_id ?? '');
+          const isError = !!block.is_error;
+          let output = '';
+          if (Array.isArray(block.content)) {
+            output = (block.content as Array<{ type?: string; text?: string }>)
+              .filter(c => c.type === 'text' && typeof c.text === 'string')
+              .map(c => c.text!).join('\n');
+          } else if (typeof block.content === 'string') {
+            output = block.content;
+          }
+          // 截断过长输出
+          if (output.length > 200) output = output.slice(0, 200) + '...';
+          entries.push({
+            ts: now,
+            type: isError ? 'error' : 'tool_result',
+            text: isError ? `工具执行出错: ${output}` : output || '(空)',
+            tool_output: output,
+          });
+        }
+      }
+    }
+  } else if (msg.type === 'system') {
+    const subtype = String(msg.subtype ?? msg.message ?? '');
+    if (subtype) {
+      entries.push({ ts: now, type: 'system', text: subtype });
+    }
+  }
+
+  return entries;
+}
+
 export async function runAgent(
   taskId: string,
   renderedPrompt: string,
   cfg: Config,
+  onStreamEntry?: (entries: StreamEntry[]) => void,
 ): Promise<SdkResult> {
   const workDir = join(cfg.sys.data_dir, 'tasks', taskId);
   await mkdir(workDir, { recursive: true });
@@ -221,6 +289,13 @@ export async function runAgent(
     for await (const message of q) {
       traceMessages.push(message);
       log.debug({ taskId, msg: message }, 'sdk_stream_msg');
+
+      // 实时回调：把 SDK 消息拆成可读条目
+      if (onStreamEntry) {
+        const entries = parseMessage(message);
+        if (entries.length > 0) onStreamEntry(entries);
+      }
+
       if (message.type === 'assistant') {
         const blocks = message.message?.content;
         if (Array.isArray(blocks)) {

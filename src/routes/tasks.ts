@@ -81,6 +81,31 @@ export function createTasksRouter(): Router {
     });
   });
 
+  // GET /api/v1/task/stream?taskid=xxx — 实时流式输出
+  router.get('/api/v1/task/stream', (req: Request, res: Response) => {
+    const taskId = typeof req.query.taskid === 'string' ? req.query.taskid : '';
+    if (!taskId) {
+      res.status(400).json({ code: 1001, message: '缺少 taskid 参数', task_id: '', linkid: '' });
+      return;
+    }
+
+    const task = taskLogsStore.get(taskId);
+    if (!task) {
+      res.status(404).json({ code: 1001, message: '任务不存在', task_id: '', linkid: '' });
+      return;
+    }
+
+    const stream = taskLogsStore.getStream(taskId);
+    res.json({
+      code: 0,
+      timestamp: now(),
+      message: 'success',
+      task_id: task.task_id,
+      linkid: task.linkid,
+      data: { status: task.status, stream },
+    });
+  });
+
   return router;
 }
 

@@ -35,11 +35,23 @@ export interface TaskLog {
   prompt: string;
   sdk_output: string | null;
   sdk_trace: string | null;
+  sdk_stream: string | null;
   callback_body: string | null;
   callback_url: string;
   error_message: string | null;
   created_at: string;
   finished_at: string | null;
+}
+
+/** SDK 流式输出中的一条可读记录，实时追加到 DB */
+export interface StreamEntry {
+  ts: string;          // HH:MM:ss.SSS
+  type: 'text' | 'tool' | 'tool_result' | 'system' | 'error';
+  text: string;        // 人类可读摘要
+  // tool 相关附加字段
+  tool_name?: string;
+  tool_input?: string; // JSON-stringified tool input
+  tool_output?: string; // tool result summary (truncated)
 }
 
 // ============================================================

@@ -108,13 +108,26 @@
             <div class="cfg-section" id="section-tasks">
                 <h2><i class="fas fa-list-alt"></i> 任务日志</h2>
                 <table class="result-table">
-                    <thead><tr><th>Task ID</th><th>LinkID</th><th>Path</th><th>状态</th><th>创建时间</th><th>操作</th></tr></thead>
-                    <tbody id="tasksTbody"><tr><td colspan="6" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
+                    <thead><tr><th>Task ID</th><th>LinkID</th><th>Path</th><th>状态</th><th>创建时间</th><th>执行过程</th><th>执行结果</th></tr></thead>
+                    <tbody id="tasksTbody"><tr><td colspan="7" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
                 </table>
 
+                <!-- 执行过程 — 对话风格弹窗 -->
+                <div id="streamModal" class="modal-overlay">
+                    <div class="modal-lg stream-modal-body">
+                        <h3 id="streamModalTitle"><i class="fas fa-comments"></i> 执行过程</h3>
+                        <div id="streamStatus" class="stream-status-bar"></div>
+                        <div id="streamMessages" class="stream-messages"></div>
+                        <div class="modal-actions">
+                            <button type="button" class="cfg-btn cfg-btn-reset" onclick="closeStreamModal()">关闭</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 执行结果 — 详情弹窗 -->
                 <div id="taskModal" class="modal-overlay">
                     <div class="modal-lg">
-                        <h3 id="taskModalTitle"><i class="fas fa-search"></i> 任务详情</h3>
+                        <h3 id="taskModalTitle"><i class="fas fa-clipboard-check"></i> 执行结果</h3>
                         <div id="taskDetail" style="margin-top:20px;"></div>
                         <div class="modal-actions">
                             <button type="button" class="cfg-btn cfg-btn-reset" onclick="closeTaskModal()">关闭</button>
@@ -227,7 +240,7 @@ async function loadTasks() {
     const list = Array.isArray(json.data) ? json.data : [];
     const tbody = document.getElementById('tasksTbody');
     if (list.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:24px;">暂无任务</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;padding:24px;">暂无任务</td></tr>';
         return;
     }
     tbody.innerHTML = list.map(t => {
@@ -238,7 +251,8 @@ async function loadTasks() {
             <td><span class="path-mono">${escHtml(t.path || '-')}</span></td>
             <td><span class="badge badge-${statusBadgeClass(t.status)}">${t.status}</span></td>
             <td>${fmtTs(t.created_at)}</td>
-            <td><button class="cfg-btn-sm" onclick="viewTask('${taskId}')"><i class="fas fa-search"></i> 详情</button></td>
+            <td><button class="cfg-btn-sm" onclick="viewStream('${taskId}')"><i class="fas fa-comments"></i> 执行过程</button></td>
+            <td><button class="cfg-btn-sm" onclick="viewTask('${taskId}')"><i class="fas fa-clipboard-check"></i> 执行结果</button></td>
         </tr>`;
     }).join('');
 }
@@ -250,7 +264,7 @@ async function viewTask(taskId) {
     if (!t) return toast('未找到', 'error');
 
     document.getElementById('taskDetail').innerHTML = taskDetailHtml(t);
-    document.getElementById('taskModalTitle').innerHTML = '<i class="fas fa-search"></i> 任务详情';
+    document.getElementById('taskModalTitle').innerHTML = '<i class="fas fa-clipboard-check"></i> 执行结果';
     document.getElementById('taskModal').classList.add('show');
 }
 
@@ -278,10 +292,148 @@ function taskDetailHtml(t) {
     `;
 }
 
-// ==== Simulate ====
-const SIM_POLL_MAX = 120;
-const SIM_POLL_MS = 1000;
+// ==============================
+// 实时执行过程 — 对话风格
+// ==============================
+let _streamPollTimer = null;
+let _streamTaskId = null;
+let _streamCount = 0;           // 已渲染的消息条数，用于增量追加
 
+function closeStreamModal() {
+    clearInterval(_streamPollTimer);
+    _streamPollTimer = null;
+    _streamTaskId = null;
+    _streamCount = 0;
+    document.getElementById('streamModal').classList.remove('show');
+}
+
+async function viewStream(taskId) {
+    _streamTaskId = taskId;
+    _streamCount = 0;
+    document.getElementById('streamMessages').innerHTML = '<div class="stream-empty"><i class="fas fa-spinner fa-spin"></i> 加载中...</div>';
+    document.getElementById('streamStatus').innerHTML = '';
+    document.getElementById('streamStatus').className = 'stream-status-bar';
+    document.getElementById('streamModalTitle').innerHTML = '<i class="fas fa-comments"></i> 执行过程 <span style="font-weight:400;font-size:0.8rem;color:#888;">' + escHtml(taskId.slice(0,8)) + '...</span>';
+    document.getElementById('streamModal').classList.add('show');
+
+    await pollStream();
+
+    // 如果任务还在跑，开始轮询
+    clearInterval(_streamPollTimer);
+    _streamPollTimer = setInterval(pollStream, 1500);
+}
+
+async function pollStream() {
+    if (!_streamTaskId) return;
+    try {
+        const res = await fetch(API + '/tasks/' + encodeURIComponent(_streamTaskId) + '/stream');
+        const json = await res.json();
+        if (!json.data) return;
+
+        const { status, stream } = json.data;
+        const entries = Array.isArray(stream) ? stream : [];
+
+        // 增量渲染：仅追加 _streamCount 之后的新条目
+        if (entries.length > _streamCount) {
+            const newEntries = entries.slice(_streamCount);
+            appendStreamEntries(newEntries);
+            _streamCount = entries.length;
+        }
+
+        // 更新状态栏
+        const statusEl = document.getElementById('streamStatus');
+        if (status === 'processing') {
+            statusEl.innerHTML = '<span class="badge badge-processing"><i class="fas fa-spinner fa-spin"></i> 执行中...</span>';
+            statusEl.className = 'stream-status-bar stream-status-live';
+        } else if (status === 'success' || status === 'completed') {
+            statusEl.innerHTML = '<span class="badge badge-completed"><i class="fas fa-check-circle"></i> 执行完成</span>';
+            statusEl.className = 'stream-status-bar stream-status-done';
+            clearInterval(_streamPollTimer);
+            _streamPollTimer = null;
+        } else if (status === 'failed' || status === 'callback_fail') {
+            statusEl.innerHTML = '<span class="badge badge-failed"><i class="fas fa-times-circle"></i> 执行失败</span>';
+            statusEl.className = 'stream-status-bar stream-status-done';
+            clearInterval(_streamPollTimer);
+            _streamPollTimer = null;
+        }
+    } catch (e) {
+        // 静默重试
+    }
+}
+
+function appendStreamEntries(entries) {
+    const container = document.getElementById('streamMessages');
+    // 首次追加时清空 loading 占位
+    if (_streamCount === 0) container.innerHTML = '';
+
+    for (const entry of entries) {
+        const div = document.createElement('div');
+        div.className = 'stream-msg stream-msg-' + entry.type;
+
+        let icon = '', label = '';
+        switch (entry.type) {
+            case 'text':
+                icon = '<i class="fas fa-robot"></i>';
+                label = '';
+                break;
+            case 'tool':
+                icon = '<i class="fas fa-wrench"></i>';
+                label = entry.tool_name || '工具';
+                break;
+            case 'tool_result':
+                icon = '<i class="fas fa-check-circle"></i>';
+                label = '结果';
+                break;
+            case 'system':
+                icon = '<i class="fas fa-info-circle"></i>';
+                label = '';
+                break;
+            case 'error':
+                icon = '<i class="fas fa-exclamation-triangle"></i>';
+                label = '错误';
+                break;
+        }
+
+        const timeHtml = '<span class="stream-ts">' + escHtml(entry.ts || '') + '</span>';
+
+        if (entry.type === 'text') {
+            // 文本消息 — 左侧气泡
+            div.innerHTML = '<div class="stream-bubble stream-bubble-text">'
+                + '<div class="stream-bubble-head">' + icon + ' ' + escHtml('Agent') + timeHtml + '</div>'
+                + '<div class="stream-bubble-body">' + escHtml(entry.text) + '</div>'
+                + '</div>';
+        } else if (entry.type === 'tool') {
+            // 工具调用 — 紧凑卡片
+            const inputPreview = entry.tool_input ? escHtml(entry.tool_input.length > 120 ? entry.tool_input.slice(0,120) + '...' : entry.tool_input) : '';
+            div.innerHTML = '<div class="stream-bubble stream-bubble-tool">'
+                + '<div class="stream-bubble-head">' + icon + ' <strong>' + escHtml(label) + '</strong>' + timeHtml + '</div>'
+                + '<div class="stream-bubble-body stream-tool-body">' + escHtml(entry.text) + '</div>'
+                + (inputPreview ? '<div class="stream-tool-input"><code>' + inputPreview + '</code></div>' : '')
+                + '</div>';
+        } else if (entry.type === 'tool_result') {
+            // 工具结果 — 灰色折叠块
+            const collapsedId = 'tr-' + Math.random().toString(16).slice(2,8);
+            div.innerHTML = '<div class="stream-bubble stream-bubble-result">'
+                + '<div class="stream-bubble-head">' + icon + ' ' + escHtml(label) + timeHtml + '</div>'
+                + '<div class="stream-bubble-body stream-result-body" id="' + collapsedId + '">' + escHtml(entry.text) + '</div>'
+                + '</div>';
+        } else if (entry.type === 'error') {
+            div.innerHTML = '<div class="stream-bubble stream-bubble-error">'
+                + '<div class="stream-bubble-head">' + icon + ' ' + escHtml(label) + timeHtml + '</div>'
+                + '<div class="stream-bubble-body">' + escHtml(entry.text) + '</div>'
+                + '</div>';
+        } else if (entry.type === 'system') {
+            div.innerHTML = '<div class="stream-system">' + timeHtml + ' ' + icon + ' ' + escHtml(entry.text) + '</div>';
+        }
+
+        container.appendChild(div);
+    }
+
+    // 自动滚到底部
+    container.scrollTop = container.scrollHeight;
+}
+
+// ==== Simulate ====
 const DEFAULT_BODY = `{
   "linkid": "sim-xxx",
   "callback_url": "",
@@ -299,7 +451,6 @@ function buildSimLinkid() {
 }
 
 async function loadSimulateTab() {
-    // 加载接口下拉
     const res = await fetch(API + '/interfaces');
     const json = await res.json();
     const list = Array.isArray(json.data) ? json.data : [];
@@ -307,12 +458,10 @@ async function loadSimulateTab() {
     sel.innerHTML = '<option value="">-- 请选择接口 --</option>' +
         list.map(i => '<option value="' + escHtml(i.path) + '">' + escHtml(i.name) + ' (' + escHtml(i.path) + ')</option>').join('');
 
-    // 初始化默认值
     if (!document.getElementById('simLinkid').value) {
         document.getElementById('simLinkid').value = buildSimLinkid();
     }
     if (!document.getElementById('simBody').value.trim()) {
-        // 尝试从 data/mock.json 加载模板
         try {
             const mr = await fetch(API + '/mock');
             const mj = await mr.json();
@@ -320,7 +469,7 @@ async function loadSimulateTab() {
                 document.getElementById('simBody').value = JSON.stringify(mj.data, null, 2);
                 return;
             }
-        } catch { /* 无 mock.json 或加载失败，使用内置模板 */ }
+        } catch { /* ignore */ }
         document.getElementById('simBody').value = DEFAULT_BODY;
     }
 }
@@ -361,36 +510,10 @@ document.getElementById('simSubmit').addEventListener('click', async () => {
         }
 
         const taskId = json.task_id;
-        status.textContent = '任务已创建，等待执行... (ID: ' + taskId.slice(0, 8) + '...)';
+        status.textContent = '任务已提交: ' + taskId.slice(0,8) + '...  ';
+        status.innerHTML += '<a href="javascript:void(0)" onclick="switchToTasksAndView(\'' + taskId + '\')" style="color:#4b6cb7;font-weight:600;">查看执行过程 <i class="fas fa-arrow-right"></i></a>';
         status.className = 'sim-status-bar sim-status-running';
-
-        // 轮询结果
-        for (let i = 0; i < SIM_POLL_MAX; i++) {
-            await new Promise(r => setTimeout(r, SIM_POLL_MS));
-            try {
-                const r2 = await fetch(API + '/tasks/' + encodeURIComponent(taskId));
-                const j2 = await r2.json();
-                const t = j2.data;
-                if (t && t.status !== 'pending' && t.status !== 'processing') {
-                    status.textContent = '';
-                    status.className = 'sim-status-bar';
-                    btn.disabled = false;
-                    btn.innerHTML = '<i class="fas fa-play"></i> 提交测试';
-                    // 展示结果
-                    document.getElementById('taskDetail').innerHTML = taskDetailHtml(t);
-                    document.getElementById('taskModalTitle').innerHTML = '<i class="fas fa-flask"></i> 模拟结果';
-                    document.getElementById('taskModal').classList.add('show');
-                    return;
-                }
-                if (t && t.status === 'processing') {
-                    status.textContent = '执行中...';
-                }
-            } catch { /* 轮询失败继续 */ }
-        }
-
-        // 超时
-        status.textContent = '轮询超时（2 分钟），请在任务日志中查看结果';
-        status.className = 'sim-status-bar sim-status-timeout';
+        toast('任务已提交');
     } catch (e) {
         status.textContent = '';
         status.className = 'sim-status-bar';
@@ -400,9 +523,15 @@ document.getElementById('simSubmit').addEventListener('click', async () => {
     btn.innerHTML = '<i class="fas fa-play"></i> 提交测试';
 });
 
-// Update tab click handler also refresh sim linkid when switching to simulate
-const _origTabHandler = document.querySelector('.cfg-tab[data-tab="simulate"]');
-// (handled inline in the tab click listener above)
+// 模拟提交后快速跳转到任务日志并打开执行过程
+function switchToTasksAndView(taskId) {
+    document.querySelectorAll('.cfg-tab').forEach(t => t.classList.remove('active'));
+    document.querySelector('.cfg-tab[data-tab="tasks"]').classList.add('active');
+    document.querySelectorAll('.cfg-section').forEach(s => s.classList.remove('active'));
+    document.getElementById('section-tasks').classList.add('active');
+    loadTasks();
+    setTimeout(() => viewStream(taskId), 300);
+}
 
 // ==== Utilities ====
 function escHtml(s) { if (!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -424,12 +553,14 @@ function statusBadgeClass(s) {
 // Close modal on overlay click
 document.getElementById('ifaceModal').addEventListener('click', function(e) { if (e.target === this) closeModal(); });
 document.getElementById('taskModal').addEventListener('click', function(e) { if (e.target === this) closeTaskModal(); });
+document.getElementById('streamModal').addEventListener('click', function(e) { if (e.target === this) closeStreamModal(); });
 
 // Close modal on ESC
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         if (document.getElementById('ifaceModal').classList.contains('show')) closeModal();
         if (document.getElementById('taskModal').classList.contains('show')) closeTaskModal();
+        if (document.getElementById('streamModal').classList.contains('show')) closeStreamModal();
     }
 });
 

@@ -42,7 +42,9 @@ async function processItem(item: {
   taskLogsStore.updateResult(task_id, { prompt: rendered });
 
   // 调用 Claude Code Agent SDK
-  const result = await runAgent(task_id, rendered, cfg);
+  const result = await runAgent(task_id, rendered, cfg, (entries) => {
+    taskLogsStore.appendStream(task_id, entries);
+  });
 
   if (!result.success) {
     // LLM 调用本身失败
@@ -138,6 +140,7 @@ export function enqueue(iface: AgentInterface, body: ProcessRequest): { task_id:
     prompt: '',
     sdk_output: null,
     sdk_trace: null,
+    sdk_stream: null,
     callback_body: null,
     callback_url: body.callback_url,
     error_message: null,
