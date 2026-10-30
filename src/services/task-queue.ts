@@ -58,18 +58,20 @@ async function processItem(item: {
     });
 
     const failPayload = buildResponse(5000, errMsg, task_id, body.linkid, null);
-    const cbResult = await deliverCallback(body.callback_url, failPayload, cfg);
+    const cbResult = await deliverCallback(body.callback_url, failPayload, cfg, (entries) => {
+      taskLogsStore.appendStream(task_id, entries);
+    });
     taskLogsStore.updateResult(task_id, {
       status: 'failed' as TaskStatus,
       callback_body: cbResult.body,
+      callback_response: cbResult.responseBody,
     });
     log.error({ task_id, error: errMsg }, 'task_failed');
     return;
   }
 
-  // LLM 成功，记录输出
+  // LLM 成功 — 暂不修改 status，等回调完成再统一设
   taskLogsStore.updateResult(task_id, {
-    status: 'success' as TaskStatus,
     sdk_output: result.rawOutput,
     sdk_trace: result.trace,
   });
@@ -85,12 +87,15 @@ async function processItem(item: {
 
   // 回调
   const successPayload = buildResponse(0, 'success', task_id, body.linkid, parsedData);
-  const cbResult = await deliverCallback(body.callback_url, successPayload, cfg);
+  const cbResult = await deliverCallback(body.callback_url, successPayload, cfg, (entries) => {
+    taskLogsStore.appendStream(task_id, entries);
+  });
 
   const finalStatus: TaskStatus = cbResult.success ? 'completed' : 'callback_fail';
   taskLogsStore.updateResult(task_id, {
     status: finalStatus,
     callback_body: cbResult.body,
+    callback_response: cbResult.responseBody,
     finished_at: nowISO(),
     ...(cbResult.errorMsg ? { error_message: cbResult.errorMsg } : {}),
   });
@@ -137,11 +142,13 @@ export function enqueue(iface: AgentInterface, body: ProcessRequest): { task_id:
     interface_id: iface.id,
     status: 'pending',
     request_body: JSON.stringify(body),
+    request_response: null,
     prompt: '',
     sdk_output: null,
     sdk_trace: null,
     sdk_stream: null,
     callback_body: null,
+    callback_response: null,
     callback_url: body.callback_url,
     error_message: null,
     created_at: now,

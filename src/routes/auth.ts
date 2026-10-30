@@ -92,7 +92,7 @@ function verifyToken(token: string, secret: Buffer): TokenPayload | null {
 // ============================================================
 // 密码强度校验：至少 8 位，同时包含字母和数字
 // ============================================================
-function validatePasswordStrength(password: string): string | null {
+export function validatePasswordStrength(password: string): string | null {
   if (password.length < 8) return '密码长度至少 8 位';
   const hasLetter = /[a-zA-Z]/.test(password);
   const hasDigit = /[0-9]/.test(password);
@@ -162,22 +162,64 @@ export function adminOnlyMiddleware(req: Request, res: Response, next: () => voi
 }
 
 /**
- * 对外接口鉴权中间件（Authorization: Bearer <api_token>）
- * token 由 cfg.yml 的 sys.api_token 配置，留空则不校验（开发便利）。
+ * 对外接口鉴权中间件。
+ * 后台 UI（系统设置）优先，cfg.yml 静态 token 作为 fallback。
+ * 两种认证方式：
+ *   1. X-Api-Key: {token}
+ *   2. Authorization: Bearer {token}
+ *
+ * 优先级：
+ *   1. DB 中 api_auth_enabled === '1' → 使用 DB token 校验
+ *   2. 否则 fallback 到 cfg.yml 静态 token
+ *   3. 都没有 → 不校验，直接放行
  */
-export function apiTokenMiddleware(apiToken: string) {
+export function apiTokenMiddleware(staticApiToken: string) {
   return (req: Request, res: Response, next: () => void) => {
-    if (!apiToken) {
+    const dbEnabled = configStore.get('api_auth_enabled');
+    const dbToken = configStore.get('api_auth_token');
+
+    // DB 启用优先
+    if (dbEnabled === '1' && dbToken) {
+      const token = extractToken(req);
+      if (!token || token !== dbToken) {
+        res.status(401).json({
+          code: 1003,
+          message: 'Unauthorized: 无效或缺失的 X-Api-Key / Authorization Bearer Token',
+          task_id: '',
+          linkid: '',
+        });
+        return;
+      }
       next();
       return;
     }
-    const header = req.headers.authorization;
-    if (!header || header !== 'Bearer ' + apiToken) {
-      res.status(401).json({ code: 1003, message: 'Unauthorized: 无效或缺失的 Authorization Bearer Token', task_id: '', linkid: '' });
-      return;
+
+    // Fallback: cfg.yml 静态 token
+    if (staticApiToken) {
+      const token = extractToken(req);
+      if (!token || token !== staticApiToken) {
+        res.status(401).json({
+          code: 1003,
+          message: 'Unauthorized: 无效或缺失的 X-Api-Key / Authorization Bearer Token',
+          task_id: '',
+          linkid: '',
+        });
+        return;
+      }
     }
+
+    // 都没有 → 放行
     next();
   };
+}
+
+/** 从 X-Api-Key 或 Authorization: Bearer 中提取 token */
+function extractToken(req: Request): string | null {
+  const apiKey = req.headers['x-api-key'] as string | undefined;
+  if (apiKey) return apiKey;
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) return authHeader.slice(7);
+  return null;
 }
 
 /** 从请求上下文获取当前用户 */

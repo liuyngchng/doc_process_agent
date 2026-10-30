@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3';
 import { join } from 'node:path';
+import { readdirSync, rmSync, existsSync } from 'node:fs';
 import { v4 as uuid } from 'uuid';
 import bcrypt from 'bcryptjs';
 import type { AgentInterface, TaskLog, TaskStatus, User, StreamEntry } from './types.js';
@@ -26,10 +27,12 @@ export function initStore(dataDir: string): Database.Database {
       interface_id  TEXT,
       status        TEXT,
       request_body  TEXT,
+      request_response TEXT,
       prompt        TEXT,
       sdk_output    TEXT,
       sdk_trace     TEXT,
       callback_body TEXT,
+      callback_response TEXT,
       callback_url  TEXT,
       error_message TEXT,
       created_at    TEXT,
@@ -56,6 +59,9 @@ export function initStore(dataDir: string): Database.Database {
   try { db.exec(`ALTER TABLE task_logs ADD COLUMN sdk_trace TEXT`); } catch { /* already exists */ }
   // Migration: add sdk_stream column for real-time agent output (added in v0.2.x)
   try { db.exec(`ALTER TABLE task_logs ADD COLUMN sdk_stream TEXT`); } catch { /* already exists */ }
+  // Migration: add request_response / callback_response columns (added in v0.3.x)
+  try { db.exec(`ALTER TABLE task_logs ADD COLUMN request_response TEXT`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE task_logs ADD COLUMN callback_response TEXT`); } catch { /* already exists */ }
   // Migration: add users / config tables if missing (added in v0.2.x)
   try { db.exec(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, role INTEGER DEFAULT 0, note TEXT DEFAULT '', must_change_pwd INTEGER DEFAULT 0, created_at TEXT)`); } catch { /* already exists */ }
   try { db.exec(`CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT NOT NULL, note TEXT)`); } catch { /* already exists */ }
@@ -312,8 +318,8 @@ export const taskLogsStore = {
   create(log: TaskLog): void {
     db.prepare(
       `INSERT INTO task_logs
-       (task_id, linkid, path, interface_id, status, request_body, prompt, sdk_output, sdk_trace, callback_body, callback_url, error_message, created_at, finished_at)
-       VALUES (@task_id, @linkid, @path, @interface_id, @status, @request_body, @prompt, @sdk_output, @sdk_trace, @callback_body, @callback_url, @error_message, @created_at, @finished_at)`
+       (task_id, linkid, path, interface_id, status, request_body, request_response, prompt, sdk_output, sdk_trace, callback_body, callback_response, callback_url, error_message, created_at, finished_at)
+       VALUES (@task_id, @linkid, @path, @interface_id, @status, @request_body, @request_response, @prompt, @sdk_output, @sdk_trace, @callback_body, @callback_response, @callback_url, @error_message, @created_at, @finished_at)`
     ).run(log);
   },
   updateStatus(taskId: string, status: TaskStatus): void {
@@ -361,6 +367,43 @@ export const taskLogsStore = {
     const row = db.prepare('SELECT sdk_stream FROM task_logs WHERE task_id = ?').get(taskId) as { sdk_stream: string | null } | undefined;
     return row?.sdk_stream ? safeParseArray(row.sdk_stream) : [];
   },
+  /**
+   * 清理过期的非活跃任务记录（status 不在 pending/processing）。
+   * 返回清理的任务数。
+   */
+  deleteExpired(retentionDays: number): number {
+    const cutoff = new Date(Date.now() - retentionDays * 24 * 3600 * 1000).toISOString();
+    const result = db.prepare(
+      `DELETE FROM task_logs
+       WHERE created_at < ?
+         AND status NOT IN ('pending', 'processing')`
+    ).run(cutoff);
+    return result.changes;
+  },
+  /** 返回所有任务的 task_id 列表，用于清理对应的工作目录 */
+  listTaskIds(): string[] {
+    return (db.prepare('SELECT task_id FROM task_logs').all() as Array<{ task_id: string }>)
+      .map((r) => r.task_id);
+  },
+  /** 按 task_id 或 linkid 查询任务（模糊匹配） */
+  search(taskId: string, linkid: string, limit = 100): TaskLog[] {
+    if (taskId && linkid) {
+      return db.prepare(
+        'SELECT * FROM task_logs WHERE task_id LIKE ? AND linkid LIKE ? ORDER BY created_at DESC LIMIT ?'
+      ).all(`%${taskId}%`, `%${linkid}%`, limit) as TaskLog[];
+    }
+    if (taskId) {
+      return db.prepare(
+        'SELECT * FROM task_logs WHERE task_id LIKE ? ORDER BY created_at DESC LIMIT ?'
+      ).all(`%${taskId}%`, limit) as TaskLog[];
+    }
+    if (linkid) {
+      return db.prepare(
+        'SELECT * FROM task_logs WHERE linkid LIKE ? ORDER BY created_at DESC LIMIT ?'
+      ).all(`%${linkid}%`, limit) as TaskLog[];
+    }
+    return db.prepare('SELECT * FROM task_logs ORDER BY created_at DESC LIMIT ?').all(limit) as TaskLog[];
+  },
 };
 
 // ============================================================
@@ -389,6 +432,19 @@ export const usersStore = {
   },
   clearMustChangePwd(username: string): boolean {
     return db.prepare('UPDATE users SET must_change_pwd = 0 WHERE username = ?').run(username).changes > 0;
+  },
+  create(username: string, hash: string, role: number, note: string): boolean {
+    try {
+      db.prepare(
+        'INSERT INTO users (username, password_hash, role, note, must_change_pwd, created_at) VALUES (?, ?, ?, ?, 0, ?)'
+      ).run(username, hash, role, note, new Date().toISOString());
+      return true;
+    } catch {
+      return false; // 用户名重复等
+    }
+  },
+  remove(username: string): boolean {
+    return db.prepare('DELETE FROM users WHERE username = ?').run(username).changes > 0;
   },
 };
 

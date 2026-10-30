@@ -5,14 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="/static/lib/font-awesome.all.min.css">
     <link rel="stylesheet" href="/static/css/admin.css">
-    <title>doc_process_agent 管理后台 - 登录</title>
+    <title id="pageTitle">doc_process_agent 管理平台 - 登录</title>
 </head>
 <body>
     <div class="login-wrapper">
         <div class="login-card">
             <div class="login-header">
                 <i class="fas fa-cogs"></i>
-                <h1>doc_process_agent 管理后台</h1>
+                <h1 id="sysNameHeader">doc_process_agent 管理平台</h1>
                 <p>请登录以继续</p>
             </div>
 
@@ -60,5 +60,17 @@
     </div>
 
     <script src="/static/js/login.js"></script>
+<script>
+(async function() {
+    try {
+        const res = await fetch('/api/info');
+        const json = await res.json();
+        const name = (json.data && json.data.sys_name) || 'doc_process_agent';
+        const title = name + ' 管理平台';
+        document.getElementById('pageTitle').textContent = title + ' - 登录';
+        document.getElementById('sysNameHeader').textContent = title;
+    } catch (_) {}
+})();
+</script>
 </body>
 </html>

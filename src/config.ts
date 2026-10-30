@@ -11,6 +11,7 @@ interface CfgFile {
     debug?: boolean;
     cert_file?: string;
     key_file?: string;
+    self_ip?: string;  // 对外服务 IP，留空自动探测
   };
   sys?: {
     max_concurrent_tasks?: number;
@@ -50,6 +51,7 @@ export interface Config {
     debug: boolean;
     cert_file: string;
     key_file: string;
+    self_ip: string;
   };
   sys: {
     max_concurrent_tasks: number;
@@ -141,6 +143,7 @@ export function loadConfig(): Config {
       debug: envBool('DEBUG', s.debug ?? false),
       cert_file: env('CERT_FILE', s.cert_file ?? ''),
       key_file: env('KEY_FILE', s.key_file ?? ''),
+      self_ip: env('SELF_IP', s.self_ip ?? ''),
     },
     sys: {
       max_concurrent_tasks: envInt('MAX_CONCURRENT_TASKS', y.max_concurrent_tasks ?? 5),

@@ -1,20 +1,58 @@
 import { Router, Request, Response } from 'express';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { networkInterfaces } from 'node:os';
 import { v4 as uuid } from 'uuid';
-import { interfacesStore, taskLogsStore } from '../store.js';
-import { renderPrompt } from '../services/prompt-engine.js';
-import { runAgent } from '../services/sdk-runner.js';
+import { interfacesStore, taskLogsStore, configStore, usersStore, hashPasswordSync } from '../store.js';
+import { enqueue } from '../services/task-queue.js';
 import { getLogger } from '../logger.js';
+import { getCurrentUser, adminOnlyMiddleware, validatePasswordStrength } from './auth.js';
 import type { Config } from '../config.js';
-import type { TaskLog, TaskStatus, StreamEntry } from '../types.js';
+import type { ProcessRequest } from '../types.js';
 
 const log = getLogger();
 
 export function createAdminRouter(cfg: Config): Router {
   const router = Router();
 
+  // === 导航信息（所有登录用户可访问） ===
+  router.get('/admin/nav', (req: Request, res: Response) => {
+    const cu = getCurrentUser(req);
+    const isAdmin = cu?.role === 1;
+    const tabs = [
+      ...(isAdmin ? [
+        { id: 'interfaces', icon: 'fa-brain', label: '模板管理' },
+        { id: 'simulate', icon: 'fa-flask', label: '操作模拟' },
+        { id: 'tasks', icon: 'fa-list-alt', label: '任务监控' },
+      ] : []),
+      { id: 'audit', icon: 'fa-search', label: '日志审查' },
+      ...(isAdmin ? [
+        { id: 'sys', icon: 'fa-sliders-h', label: '系统设置' },
+        { id: 'users', icon: 'fa-users', label: '用户管理' },
+      ] : []),
+    ];
+    const defaultTab = isAdmin ? 'interfaces' : 'audit';
+    res.json({ code: 0, data: { role: isAdmin ? 1 : 0, default_tab: defaultTab, tabs } });
+  });
+
+  // === 服务器信息（所有登录用户可访问） ===
+  router.get('/admin/server-info', (_req: Request, res: Response) => {
+    const protocol = cfg.server.cert_file && cfg.server.key_file &&
+      existsSync(cfg.server.cert_file) && existsSync(cfg.server.key_file) ? 'https' : 'http';
+    const host = cfg.server.self_ip || detectPrimaryIp();
+    res.json({ code: 0, data: { protocol, host, port: cfg.server.port } });
+  });
+
+  // ============================================================
+  // 以下仅管理员
+  // ============================================================
+
   // ---- 接口管理 ----
+  router.use('/admin/interfaces', adminOnlyMiddleware);
+  router.use('/admin/mock', adminOnlyMiddleware);
+  router.use('/admin/simulate', adminOnlyMiddleware);
+  router.use('/admin/tasks', adminOnlyMiddleware);
+  router.use('/admin/sys-config', adminOnlyMiddleware);
 
   // 列表
   router.get('/admin/interfaces', (_req: Request, res: Response) => {
@@ -40,7 +78,6 @@ export function createAdminRouter(cfg: Config): Router {
       return;
     }
 
-    // 检查 path 唯一性
     const existing = interfacesStore.getByPath(path);
     if (existing) {
       res.status(400).json({ code: 1001, message: '接口 path 已存在: ' + path });
@@ -83,7 +120,6 @@ export function createAdminRouter(cfg: Config): Router {
 
   // ---- 模拟操作 ----
 
-  // 读取 data/mock.json 作为模拟请求体默认值（文件可不存在）
   router.get('/admin/mock', (_req: Request, res: Response) => {
     const mockFile = join(cfg.sys.data_dir, 'mock.json');
     if (!existsSync(mockFile)) {
@@ -101,109 +137,66 @@ export function createAdminRouter(cfg: Config): Router {
   });
 
   router.post('/admin/simulate', (req: Request, res: Response) => {
-    const { interface_path, linkid: reqLinkid, request_body } = req.body as {
+    const { interface_path, request_body } = req.body as {
       interface_path?: string;
-      linkid?: string;
       request_body?: Record<string, unknown>;
     };
 
     if (!interface_path) {
-      res.status(400).json({ code: 1001, message: '缺少 interface_path' });
+      const resp = { code: 1001, timestamp: nowStr(), message: '缺少 interface_path' };
+      log.warn({ request: req.body, response: resp }, 'simulate_missing_path');
+      res.status(400).json(resp);
       return;
     }
 
     const iface = interfacesStore.getByPath(interface_path);
     if (!iface) {
-      res.status(404).json({ code: 1001, message: '接口不存在: ' + interface_path });
+      const resp = { code: 1001, timestamp: nowStr(), message: '接口不存在: ' + interface_path };
+      log.warn({ request: req.body, response: resp }, 'simulate_interface_not_found');
+      res.status(404).json(resp);
       return;
     }
 
     if (!request_body || typeof request_body !== 'object') {
-      res.status(400).json({ code: 1001, message: '请求体不能为空' });
+      const resp = { code: 1001, timestamp: nowStr(), message: '请求体不能为空' };
+      log.warn({ request: req.body, response: resp }, 'simulate_empty_body');
+      res.status(400).json(resp);
       return;
     }
 
-    const taskId = uuid();
-    const linkid = reqLinkid || 'sim-' + taskId.slice(0, 8);
-    const now = new Date().toISOString();
+    const linkid = (request_body.linkid as string) || 'sim-' + uuid().slice(0, 8);
+    const callbackUrl = (request_body.callback_url as string) || '';
 
-    // 持久化 task_log
-    const logEntry: TaskLog = {
-      task_id: taskId,
+    const body: ProcessRequest = {
       linkid,
-      path: iface.path,
-      interface_id: iface.id,
-      status: 'pending',
-      request_body: JSON.stringify(request_body),
-      prompt: '',
-      sdk_output: null,
-      sdk_trace: null,
-      sdk_stream: null,
-      callback_body: null,
-      callback_url: '',  // 模拟操作不回調
-      error_message: null,
-      created_at: now,
-      finished_at: null,
+      callback_url: callbackUrl,
+      ...request_body,
     };
-    taskLogsStore.create(logEntry);
 
-    log.info({ taskId, linkid, path: iface.path }, 'simulate_task_created');
+    const { task_id } = enqueue(iface, body);
+    log.info({ task_id, linkid, path: iface.path, callback_url: callbackUrl }, 'simulate_task_enqueued');
 
-    // 立即返回
-    res.json({ code: 0, message: '任务已创建', task_id: taskId, linkid });
+    const simulateResp = {
+      code: 0,
+      timestamp: nowStr(),
+      message: '任务已创建',
+      task_id,
+      linkid,
+    };
+    taskLogsStore.updateResult(task_id, { request_response: JSON.stringify(simulateResp) });
 
-    // 后台异步执行
-    (async () => {
-      try {
-        taskLogsStore.updateStatus(taskId, 'processing');
-        log.info({ taskId }, 'simulate_task_processing');
-
-        const rendered = renderPrompt(iface.prompt, request_body);
-        taskLogsStore.updateResult(taskId, { prompt: rendered });
-
-        const result = await runAgent(taskId, rendered, cfg, (entries) => {
-          taskLogsStore.appendStream(taskId, entries);
-        });
-
-        if (!result.success) {
-          taskLogsStore.updateResult(taskId, {
-            status: 'failed' as TaskStatus,
-            sdk_output: result.rawOutput,
-            sdk_trace: result.trace,
-            error_message: result.errorMessage || 'Claude 处理失败',
-            finished_at: new Date().toISOString(),
-          });
-          log.error({ taskId, error: result.errorMessage }, 'simulate_task_failed');
-        } else {
-          taskLogsStore.updateResult(taskId, {
-            status: 'success' as TaskStatus,
-            sdk_output: result.rawOutput,
-            sdk_trace: result.trace,
-            finished_at: new Date().toISOString(),
-          });
-          log.info({ taskId, outputLen: result.rawOutput.length }, 'simulate_task_success');
-        }
-      } catch (err) {
-        const errMsg = err instanceof Error ? err.message : String(err);
-        taskLogsStore.updateResult(taskId, {
-          status: 'failed' as TaskStatus,
-          error_message: errMsg,
-          finished_at: new Date().toISOString(),
-        });
-        log.error({ taskId, error: errMsg }, 'simulate_task_exception');
-      }
-    })();
+    res.json(simulateResp);
   });
 
-  // ---- 任务日志 ----
+  // ---- 任务监控 ----
 
-  // 列表
   router.get('/admin/tasks', (req: Request, res: Response) => {
     const limit = Math.min(parseInt(String(req.query.limit), 10) || 100, 500);
     const list = taskLogsStore.list(limit);
     res.json({ code: 0, data: list.map((t) => ({
       task_id: t.task_id,
       linkid: t.linkid,
+      title: extractTitle(t.request_body),
       path: t.path,
       status: t.status,
       callback_url: t.callback_url,
@@ -213,7 +206,6 @@ export function createAdminRouter(cfg: Config): Router {
     })) });
   });
 
-  // 详情
   router.get('/admin/tasks/:task_id', (req: Request, res: Response) => {
     const task = taskLogsStore.get(req.params.task_id);
     if (!task) {
@@ -223,13 +215,14 @@ export function createAdminRouter(cfg: Config): Router {
     res.json({ code: 0, data: {
       ...task,
       request_body: safeParse(task.request_body),
+      request_response: safeParse(task.request_response),
       callback_body: safeParse(task.callback_body),
+      callback_response: safeParse(task.callback_response),
       sdk_trace: safeParse(task.sdk_trace),
       sdk_stream: safeParse(task.sdk_stream),
     }});
   });
 
-  // 实时流式输出（轮询接口）
   router.get('/admin/tasks/:task_id/stream', (req: Request, res: Response) => {
     const task = taskLogsStore.get(req.params.task_id);
     if (!task) {
@@ -240,10 +233,205 @@ export function createAdminRouter(cfg: Config): Router {
     res.json({ code: 0, data: { status: task.status, stream } });
   });
 
+  // ============================================================
+  // 以下所有登录用户可访问
+  // ============================================================
+
+  // ---- 日志审查 ----
+
+  router.get('/admin/audit', (req: Request, res: Response) => {
+    const taskId = typeof req.query.task_id === 'string' ? req.query.task_id.trim() : '';
+    const linkid = typeof req.query.linkid === 'string' ? req.query.linkid.trim() : '';
+    const limit = Math.min(parseInt(String(req.query.limit), 10) || 10, 100);
+    const list = taskLogsStore.search(taskId, linkid, limit);
+    res.json({
+      code: 0,
+      data: list.map((t) => ({
+        task_id: t.task_id,
+        linkid: t.linkid,
+        title: extractTitle(t.request_body),
+        path: t.path,
+        status: t.status,
+        created_at: t.created_at,
+        finished_at: t.finished_at,
+      })),
+    });
+  });
+
+  router.get('/admin/audit/:task_id', (req: Request, res: Response) => {
+    const task = taskLogsStore.get(req.params.task_id);
+    if (!task) {
+      res.status(404).json({ code: 1001, message: '任务不存在' });
+      return;
+    }
+    res.json({
+      code: 0,
+      data: {
+        task_id: task.task_id,
+        linkid: task.linkid,
+        title: extractTitle(task.request_body),
+        path: task.path,
+        status: task.status,
+        callback_url: task.callback_url,
+        error_message: task.error_message,
+        created_at: task.created_at,
+        finished_at: task.finished_at,
+        request_body: safeParse(task.request_body),
+        request_response: safeParse(task.request_response),
+        prompt: task.prompt,
+        sdk_output: task.sdk_output,
+        sdk_trace: safeParse(task.sdk_trace),
+        sdk_stream: safeParse(task.sdk_stream),
+        callback_body: safeParse(task.callback_body),
+        callback_response: safeParse(task.callback_response),
+      },
+    });
+  });
+
+  // ---- 系统设置（仅管理员） ----
+
+  router.get('/admin/sys-config', (req: Request, res: Response) => {
+    const name = configStore.get('sys.name') || '';
+    const apiAuthEnabled = configStore.get('api_auth_enabled');
+    const apiAuthToken = configStore.get('api_auth_token');
+    res.json({
+      code: 0,
+      data: {
+        sys: { name },
+        api: {
+          auth_enabled: apiAuthEnabled === '1',
+          auth_token: apiAuthToken || '',
+        },
+      },
+    });
+  });
+
+  router.put('/admin/sys-config', (req: Request, res: Response) => {
+    const { sys, api } = req.body as {
+      sys?: { name?: string };
+      api?: { auth_enabled?: boolean; auth_token?: string };
+    };
+    if (sys && typeof sys.name === 'string' && sys.name.trim()) {
+      configStore.set('sys.name', sys.name.trim(), '系统名称');
+    }
+    if (api) {
+      configStore.set(
+        'api_auth_enabled',
+        api.auth_enabled ? '1' : '0',
+        '对外 API 是否启用 X-Api-Key 认证'
+      );
+      if (typeof api.auth_token === 'string') {
+        configStore.set('api_auth_token', api.auth_token, '对外 API 认证 Token');
+      }
+    }
+    log.info({ sys_name: sys?.name, api_auth_enabled: api?.auth_enabled }, 'admin_update_sys_config');
+    res.json({ code: 0, message: '保存成功' });
+  });
+
+  // ---- 用户管理（仅管理员） ----
+
+  router.get('/admin/users', adminOnlyMiddleware, (_req: Request, res: Response) => {
+    const users = usersStore.list().map((u) => ({
+      id: u.id,
+      user_name: u.username,
+      role: u.role,
+      note: u.note,
+      created_at: u.created_at,
+    }));
+    res.json({ code: 0, data: users });
+  });
+
+  router.post('/admin/users', adminOnlyMiddleware, (req: Request, res: Response) => {
+    const { user_name, user_pwd, role, note } = req.body as {
+      user_name?: string;
+      user_pwd?: string;
+      role?: number;
+      note?: string;
+    };
+    if (!user_name || !user_pwd) {
+      res.status(400).json({ code: 1001, message: '用户名和密码不能为空' });
+      return;
+    }
+
+    const strengthErr = validatePasswordStrength(user_pwd);
+    if (strengthErr) {
+      res.status(400).json({ code: 1001, message: strengthErr });
+      return;
+    }
+
+    if (usersStore.get(user_name)) {
+      res.status(409).json({ code: 1001, message: '用户名已存在' });
+      return;
+    }
+
+    const hash = hashPasswordSync(user_pwd);
+    const ok = usersStore.create(user_name, hash, role === 1 ? 1 : 0, note || '');
+    if (!ok) {
+      res.status(500).json({ code: 1001, message: '创建失败' });
+      return;
+    }
+
+    const cu = getCurrentUser(req);
+    log.info({ admin: cu?.uname, target: user_name, role }, 'admin_create_user');
+    res.json({ code: 0, message: '添加成功' });
+  });
+
+  router.delete('/admin/users/:username', adminOnlyMiddleware, (req: Request, res: Response) => {
+    const username = req.params.username;
+    if (username === 'admin') {
+      res.status(400).json({ code: 1001, message: '不能删除 admin 用户' });
+      return;
+    }
+    const ok = usersStore.remove(username);
+    if (!ok) {
+      res.status(404).json({ code: 1001, message: '用户不存在' });
+      return;
+    }
+    const cu = getCurrentUser(req);
+    log.info({ admin: cu?.uname, target: username }, 'admin_delete_user');
+    res.json({ code: 0, message: '已删除' });
+  });
+
   return router;
 }
 
 function safeParse(s: string | null): unknown {
   if (!s) return null;
   try { return JSON.parse(s); } catch { return s; }
+}
+
+function extractTitle(requestBody: string | null): string {
+  if (!requestBody) return '-';
+  try {
+    const obj = JSON.parse(requestBody);
+    const title =
+      (obj.form_data && (obj.form_data.title || obj.form_data.标题)) ||
+      obj.title ||
+      obj.标题 ||
+      '';
+    return title || '-';
+  } catch {
+    return '-';
+  }
+}
+
+function detectPrimaryIp(): string {
+  const ifaces = networkInterfaces();
+  const candidates: string[] = [];
+  for (const name of Object.keys(ifaces)) {
+    for (const info of ifaces[name] ?? []) {
+      if (info.family !== 'IPv4' || info.internal) continue;
+      const addr = info.address;
+      if (addr.startsWith('172.') || addr.startsWith('10.') || addr.startsWith('192.168.')) {
+        candidates.push(addr);
+      } else {
+        candidates.unshift(addr);
+      }
+    }
+  }
+  return candidates[0] || '127.0.0.1';
+}
+
+function nowStr(): string {
+  return new Date().toISOString().replace('T', ' ').slice(0, 19);
 }

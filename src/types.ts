@@ -32,11 +32,13 @@ export interface TaskLog {
   interface_id: string | null;
   status: TaskStatus;
   request_body: string;
+  request_response: string | null;   // 我方对请求的同步响应
   prompt: string;
   sdk_output: string | null;
   sdk_trace: string | null;
   sdk_stream: string | null;
   callback_body: string | null;
+  callback_response: string | null;  // 对方对回调的响应
   callback_url: string;
   error_message: string | null;
   created_at: string;

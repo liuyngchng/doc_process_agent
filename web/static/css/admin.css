@@ -416,6 +416,7 @@ header p {
 }
 
 .form-g input[type="text"],
+.form-g input[type="password"],
 .form-g textarea,
 .form-g select {
     width: 100%;
@@ -477,6 +478,20 @@ header p {
 .result-table tbody tr:hover { background: #f8f9fe; }
 .result-table tbody tr:last-child td { border-bottom: none; }
 
+/* 操作列 — 紧凑图标按钮，列宽不换行 */
+.col-action {
+    white-space: nowrap;
+    width: 40px;
+    text-align: center !important;
+}
+
+.cfg-btn-icon {
+    padding: 5px 8px;
+    font-size: 0.85rem;
+    min-width: 32px;
+    justify-content: center;
+}
+
 .path-mono {
     font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
     font-size: 0.85rem;
@@ -529,6 +544,12 @@ header p {
     gap: 8px;
 }
 
+/* “执行过程” 与 “执行结果” 窗口宽度对齐背景页面（.container 为 max-width:1280px） */
+#streamModal .modal-lg,
+#taskModal .modal-lg {
+    width: min(1280px, calc(100vw - 40px));
+}
+
 .modal-actions {
     display: flex;
     gap: 12px;
@@ -561,6 +582,14 @@ header p {
     padding-top: 12px;
     border-top: 2px solid #eef1f6;
     font-weight: 600;
+    display: flex;
+    align-items: center;
+    user-select: none;
+}
+.kv-section:hover { color: #3a5a9e; }
+.task-detail-toggle {
+    color: #999;
+    font-size: 0.75rem;
 }
 .task-detail-json {
     background: #2d2d2d;
@@ -632,7 +661,7 @@ header p {
 
 /* ---- 模拟操作 ---- */
 .sim-input {
-    max-width: 720px;
+    width: 100%;
 }
 
 .sim-input .form-g textarea {
@@ -651,171 +680,110 @@ header p {
     color: #2a4365;
 }
 
-/* ---- 实时执行过程 — 对话风格 ---- */
-.stream-modal-body {
-    display: flex;
-    flex-direction: column;
-}
-
+/* ---- 执行过程 - 终端风格 ---- */
 .stream-status-bar {
     padding: 8px 0;
     font-size: 0.85rem;
     min-height: 28px;
 }
 
-.stream-status-live {
-    color: #2a4365;
-}
+.stream-status-live { color: #2a4365; }
+.stream-status-done { color: #888; }
 
-.stream-status-done {
-    color: #888;
-}
-
-.stream-messages {
+.stream-terminal {
     flex: 1;
-    background: #f5f7fa;
-    border-radius: 12px;
+    background: #1e1e1e;
+    color: #f8f8f2;
     padding: 16px 18px;
+    border-radius: 8px;
     min-height: 320px;
     max-height: 55vh;
     overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.stream-empty {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 120px;
-    color: #aaa;
-    font-size: 0.9rem;
-}
-
-/* 系统消息 — 居中灰字 */
-.stream-system {
-    text-align: center;
-    font-size: 0.78rem;
-    color: #999;
-    padding: 4px 0;
-}
-
-.stream-system .fas {
-    margin-right: 4px;
-}
-
-/* 消息时间戳 */
-.stream-ts {
-    float: right;
-    font-size: 0.7rem;
-    color: #aaa;
-    font-weight: 400;
-    margin-left: 12px;
-}
-
-/* 气泡容器 */
-.stream-bubble {
-    max-width: 85%;
-    border-radius: 12px;
-    padding: 12px 16px;
-    font-size: 0.87rem;
-    line-height: 1.55;
-    animation: streamMsgIn 0.25s ease-out;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-}
-
-.stream-bubble-head {
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: #555;
-    margin-bottom: 6px;
-}
-
-.stream-bubble-head .fas {
-    margin-right: 4px;
-}
-
-.stream-bubble-body {
-    color: #333;
+    margin: 0;
+    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+    font-size: 0.82rem;
+    line-height: 1.6;
     white-space: pre-wrap;
     word-break: break-word;
 }
 
-/* Agent 文本 — 左侧白色气泡 */
-.stream-bubble-text {
-    background: #fff;
-    border: 1px solid #e2e6ed;
-    align-self: flex-start;
-    border-bottom-left-radius: 4px;
+/* ---- 日志审查时间线 ---- */
+.audit-timeline {
+    position: relative;
+    padding-left: 32px;
 }
-
-.stream-bubble-text .stream-bubble-head { color: #4b6cb7; }
-
-/* 工具调用 — 蓝色边框卡片 */
-.stream-bubble-tool {
-    background: linear-gradient(135deg, #f0f4ff 0%, #e8f0fe 100%);
-    border: 1px solid #c5d5f0;
-    align-self: flex-start;
-    border-bottom-left-radius: 4px;
+.audit-timeline::before {
+    content: '';
+    position: absolute;
+    left: 12px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: #e0e3e8;
 }
-
-.stream-bubble-tool .stream-bubble-head { color: #3a6ea5; }
-
-.stream-tool-body {
-    color: #2a4365;
-    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
-    font-size: 0.82rem;
+.timeline-item {
+    position: relative;
+    margin-bottom: 20px;
 }
-
-.stream-tool-input {
-    margin-top: 8px;
-    padding: 8px 10px;
-    background: rgba(255,255,255,0.6);
-    border-radius: 6px;
-    font-size: 0.78rem;
-    max-height: 60px;
-    overflow-y: auto;
+.timeline-dot {
+    position: absolute;
+    left: -32px;
+    top: 4px;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: #4b6cb7;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    z-index: 1;
 }
-
-.stream-tool-input code {
-    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
-    color: #555;
-    word-break: break-all;
+.timeline-item.callback .timeline-dot { background: #6c5ce7; }
+.timeline-item.error .timeline-dot { background: #c62828; }
+.timeline-item.done .timeline-dot { background: #2e7d32; }
+.timeline-body {
+    background: #f8f9fb;
+    border: 1px solid #e0e3e8;
+    border-radius: 8px;
+    padding: 12px 16px;
 }
-
-/* 工具结果 — 灰色折叠块 */
-.stream-bubble-result {
-    background: #f4f4f4;
-    border: 1px solid #ddd;
-    align-self: flex-start;
-    border-bottom-left-radius: 4px;
+.timeline-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    user-select: none;
 }
-
-.stream-bubble-result .stream-bubble-head { color: #8e8e8e; }
-
-.stream-result-body {
+.timeline-header:hover { color: #4b6cb7; }
+.timeline-header strong {
+    color: #2c3e50;
+    font-size: 0.9rem;
+}
+.timeline-time {
     color: #666;
-    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
     font-size: 0.8rem;
+    white-space: nowrap;
+    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
 }
-
-/* 错误 — 红色 */
-.stream-bubble-error {
-    background: #fff5f5;
-    border: 1px solid #fed7d7;
-    align-self: stretch;
-    border-bottom-left-radius: 4px;
+.timeline-toggle {
+    margin-left: auto;
+    color: #999;
+    font-size: 0.75rem;
+    transition: transform 0.15s;
 }
-
-.stream-bubble-error .stream-bubble-head { color: #c62828; }
-
-@keyframes streamMsgIn {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-/* 响应式 — 小程序端气泡不可太宽 */
-@media (max-width: 600px) {
-    .stream-bubble { max-width: 95%; }
+.timeline-detail {
+    margin: 0;
+    padding: 10px 12px;
+    background: #2d2d2d;
+    color: #f8f8f2;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 300px;
+    overflow-y: auto;
 }
