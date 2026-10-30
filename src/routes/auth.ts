@@ -175,19 +175,28 @@ export function adminOnlyMiddleware(req: Request, res: Response, next: () => voi
  */
 export function apiTokenMiddleware(staticApiToken: string) {
   return (req: Request, res: Response, next: () => void) => {
+    // 第一时间打印收到的请求数据（无论对错，鉴权前）
+    log.debug({ path: req.path, body: req.body }, 'api_request_received');
+
     const dbEnabled = configStore.get('api_auth_enabled');
     const dbToken = configStore.get('api_auth_token');
+
+    const respondUnauthorized = () => {
+      const resp = {
+        code: 1003,
+        message: 'Unauthorized: 无效或缺失的 X-Api-Key / Authorization Bearer Token',
+        task_id: '',
+        linkid: '',
+      };
+      log.warn({ path: req.path, response: resp }, 'api_auth_failed');
+      res.status(401).json(resp);
+    };
 
     // DB 启用优先
     if (dbEnabled === '1' && dbToken) {
       const token = extractToken(req);
       if (!token || token !== dbToken) {
-        res.status(401).json({
-          code: 1003,
-          message: 'Unauthorized: 无效或缺失的 X-Api-Key / Authorization Bearer Token',
-          task_id: '',
-          linkid: '',
-        });
+        respondUnauthorized();
         return;
       }
       next();
@@ -198,12 +207,7 @@ export function apiTokenMiddleware(staticApiToken: string) {
     if (staticApiToken) {
       const token = extractToken(req);
       if (!token || token !== staticApiToken) {
-        res.status(401).json({
-          code: 1003,
-          message: 'Unauthorized: 无效或缺失的 X-Api-Key / Authorization Bearer Token',
-          task_id: '',
-          linkid: '',
-        });
+        respondUnauthorized();
         return;
       }
     }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# doc_process_agent Docker 镜像构建脚本
+# dp_agt Docker 镜像构建脚本
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
@@ -13,7 +13,7 @@ BUILD_START=$SECONDS
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-IMAGE_NAME="${IMAGE_NAME:-doc_process_agent}"
+IMAGE_NAME="${IMAGE_NAME:-dp_agt}"
 
 # ── Usage ────────────────────────────────────────────────────────
 usage() {
@@ -108,7 +108,7 @@ NODE_TARBALL="node-v22.23.2-linux-x64.tar.xz"
 NODE_TARBALL_PATH="$PROJECT_ROOT/deploy/$NODE_TARBALL"
 
 # 若本地缓存目录已有该 tarball 则复用，否则联网下载
-NODE_CACHE_DIR="${NODE_CACHE_DIR:-$HOME/.cache/doc-process-agent}"
+NODE_CACHE_DIR="${NODE_CACHE_DIR:-$HOME/.cache/dp-agt}"
 if [ -f "$NODE_CACHE_DIR/$NODE_TARBALL" ]; then
   cp "$NODE_CACHE_DIR/$NODE_TARBALL" "$NODE_TARBALL_PATH"
   echo "[build] Node.js 从本地缓存复用"
@@ -163,7 +163,7 @@ if [[ ! -f "$CERT_FILE" || ! -f "$KEY_FILE" ]]; then
     openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
       -keyout "$KEY_FILE" \
       -out "$CERT_FILE" \
-      -subj "/C=CN/O=doc_process_agent/CN=localhost" \
+      -subj "/C=CN/O=dp_agt/CN=localhost" \
       -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" 2>/dev/null
   else
     echo "[build] 警告: 未找到 openssl，跳过证书生成，服务将使用 HTTP"

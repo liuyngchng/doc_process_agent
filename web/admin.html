@@ -5,12 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="/static/lib/font-awesome.all.min.css">
     <link rel="stylesheet" href="/static/css/admin.css">
-    <title id="pageTitle">doc_process_agent 管理平台</title>
+    <title id="pageTitle">dp_agt 管理平台</title>
 </head>
 <body>
 <div class="container">
     <header>
-        <h1><i class="fas fa-cogs"></i> <span id="sysNameHeader">doc_process_agent 管理平台</span></h1>
+        <h1><i class="fas fa-cogs"></i> <span id="sysNameHeader">dp_agt 管理平台</span></h1>
         <p>系统管理 &middot; 运行监控</p>
         <button class="logout-btn" onclick="doLogout()"><i class="fas fa-sign-out-alt"></i> 退出登录</button>
     </header>
@@ -62,9 +62,9 @@
                 </div>
             </div>
 
-            <!-- ========== 模拟操作 ========== -->
+            <!-- ========== 操作模拟 ========== -->
             <div class="cfg-section" id="section-simulate">
-                <h2><i class="fas fa-flask"></i> 模拟操作</h2>
+                <h2><i class="fas fa-flask"></i> 操作模拟</h2>
                 <p>选择访问路径并输入测试数据，提交后自动调用 SDK 并记录结果到任务日志。</p>
 
                 <div class="sim-layout">
@@ -90,9 +90,9 @@
                 </div>
             </div>
 
-            <!-- ========== 任务日志 ========== -->
+            <!-- ========== 任务监控 ========== -->
             <div class="cfg-section" id="section-tasks">
-                <h2><i class="fas fa-list-alt"></i> 任务日志</h2>
+                <h2><i class="fas fa-list-alt"></i> 任务监控</h2>
                 <table class="result-table">
                     <thead><tr><th>Task ID</th><th>LinkID</th><th>标题</th><th>Path</th><th>状态</th><th>创建时间</th><th>完成时间</th><th class="col-action">执行过程</th><th class="col-action">执行结果</th></tr></thead>
                     <tbody id="tasksTbody"><tr><td colspan="9" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
@@ -698,7 +698,7 @@ async function loadSysConfig() {
         const res = await fetch(API + '/sys-config');
         const json = await res.json();
         if (json.data) {
-            const sysName = json.data.sys.name || 'doc_process_agent';
+            const sysName = json.data.sys.name || 'dp_agt';
             document.getElementById('sysName').value = sysName;
             // 同步更新页面标题和 header
             const title = sysName + ' 管理平台';
@@ -868,7 +868,7 @@ function auditTimelineHtml(t) {
 
     // 3. 渲染提示词
     if (t.prompt) {
-        events.push({ time: null, type: 'prompt', title: '渲染提示词', detail: t.prompt });
+        events.push({ time: t.created_at, type: 'prompt', title: '渲染提示词', detail: t.prompt });
     }
 
     // 4. 智能体执行过程（流式）
@@ -888,7 +888,7 @@ function auditTimelineHtml(t) {
 
     // 5. Agent 最终输出
     if (t.sdk_output) {
-        events.push({ time: null, type: 'output', title: 'Agent 输出结果', detail: t.sdk_output });
+        events.push({ time: t.finished_at, type: 'output', title: 'Agent 输出结果', detail: t.sdk_output });
     }
 
     // 6. 回调对方 URL

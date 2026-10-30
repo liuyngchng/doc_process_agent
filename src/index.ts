@@ -15,7 +15,7 @@ import { createAuthRouter, authWebMiddleware, apiTokenMiddleware } from './route
 
 const log = getLogger();
 
-log.info('==== doc_process_agent starting ====');
+log.info('==== dp_agt starting ====');
 
 const cfg = loadConfig();
 log.info('config_loaded');
@@ -60,7 +60,14 @@ log.info('task_queue_ready');
 
 // Express
 const app = express();
-app.use(express.json({ limit: '10mb' }));
+
+// 在 JSON 解析前捕获原始请求体（verify 回调在 express.json 内部拿到 raw buffer）
+app.use(express.json({
+  limit: '10mb',
+  verify: (req, _res, buf) => {
+    (req as any).rawBody = buf.toString('utf8');
+  },
+}));
 app.use(cookieParser());
 log.info('express_routes_registering');
 
@@ -79,7 +86,7 @@ app.get('/login', (_req, res) => {
 
 // 公开系统信息（登录页用，无需认证）
 app.get('/api/info', (_req, res) => {
-  const name = configStore.get('sys.name') || 'doc_process_agent';
+  const name = configStore.get('sys.name') || 'dp_agt';
   res.json({ code: 0, data: { sys_name: name } });
 });
 
@@ -92,6 +99,17 @@ app.use(createProcessRouter(cfg));
 
 // 任务管理 API（外部系统调用）
 app.use(createTasksRouter());
+
+// JSON 解析失败等中间件错误 → 先记录原始请求，再返回 400
+app.use((err: any, req: any, res: any, _next: any) => {
+  log.debug({
+    method: req.method,
+    url: req.originalUrl,
+    rawBody: req.rawBody ?? '(无原始请求体)',
+    error: err?.message ?? String(err),
+  }, 'request_body_parse_error');
+  res.status(400).json({ code: 1001, timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19), message: '请求体不是合法 JSON' });
+});
 
 // Dev null — 用于调试接收请求
 app.post('/api/dev/null', (req, res) => {

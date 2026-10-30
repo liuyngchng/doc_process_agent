@@ -32,6 +32,8 @@ interface PostResult {
   ok: boolean;
   statusCode: number | undefined;
   responseBody: string;
+  /** 底层错误原因，如 DNS 解析失败、连接超时等（HTTP 有响应但状态码非 2xx 时为空） */
+  error?: string;
 }
 
 /**
@@ -43,7 +45,7 @@ function postOnce(url: string, payload: string, token?: string): Promise<PostRes
     try {
       parsed = new URL(url);
     } catch {
-      resolve({ ok: false, statusCode: undefined, responseBody: '' });
+      resolve({ ok: false, statusCode: undefined, responseBody: '', error: '回调 URL 格式无效' });
       return;
     }
 
@@ -81,11 +83,11 @@ function postOnce(url: string, payload: string, token?: string): Promise<PostRes
     });
 
     req.setTimeout(30_000, () => {
-      req.destroy(new Error('callback_timeout'));
+      req.destroy(new Error('回调请求超时 (30s)'));
     });
     req.on('error', (err) => {
       log.debug({ url, error: err.message }, 'callback_request_error');
-      resolve({ ok: false, statusCode: undefined, responseBody: '' });
+      resolve({ ok: false, statusCode: undefined, responseBody: '', error: err.message });
     });
     req.write(payload);
     req.end();
@@ -109,17 +111,18 @@ export async function deliverCallback(
   // 生成 curl，输出到流式 + info 日志（方便排查）
   const bodyEsc = bodyStr.replace(/'/g, "'\\''");
   const authHeader = token ? `-H 'Authorization: Bearer ${token}'` : "-H 'Authorization: Bearer sk-***'";
-  const curlCmd = `curl -k --noproxy '*' -H 'Content-Type: application/json' ${authHeader} -d '${bodyEsc}' ${callbackUrl}`;
+  const curlCmd = `curl -k --noproxy '*' -w'\\n' -H 'Content-Type: application/json' ${authHeader} -d '${bodyEsc}' ${callbackUrl}`;
 
   onStream?.([{ ts: ts(), type: 'system', text: `开始回调 POST ${callbackUrl}`, tool_name: 'callback', tool_input: curlCmd }]);
 
   // 打印 request（包含 curl）和完整 payload
-  log.info({ taskId: payload.task_id, url: callbackUrl, curl: curlCmd }, 'callback_request');
-  log.debug({ taskId: payload.task_id, url: callbackUrl, payload }, 'callback_request_payload');
+  log.info({ taskId: payload.task_id, url: callbackUrl || '(空)', curl: curlCmd }, 'callback_request');
+  log.debug({ taskId: payload.task_id, url: callbackUrl || '(空)', payload }, 'callback_request_payload');
 
   let retryCount = 0;
   let lastResponseBody = '';
   let lastStatusCode: number | undefined;
+  let lastError: string | undefined;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     if (attempt > 0) {
@@ -128,7 +131,7 @@ export async function deliverCallback(
       onStream?.([{ ts: ts(), type: 'system', text: `回调重试 #${attempt}，${delay}ms 后重试` }]);
       // 重试时打印上次 HTTP 状态码
       log.warn(
-        { taskId: payload.task_id, attempt, delayMs: delay, lastStatusCode, lastResponseBody: lastResponseBody.slice(0, 500) },
+        { taskId: payload.task_id, attempt, delayMs: delay, lastStatusCode, lastError, lastResponseBody: lastResponseBody.slice(0, 500) },
         'callback_retry',
       );
       await new Promise((r) => setTimeout(r, delay));
@@ -137,6 +140,7 @@ export async function deliverCallback(
     const result = await postOnce(callbackUrl, bodyStr, token);
     lastResponseBody = result.responseBody;
     lastStatusCode = result.statusCode;
+    lastError = result.error;
     if (result.ok) {
       onStream?.([{
         ts: ts(),
@@ -145,22 +149,24 @@ export async function deliverCallback(
         tool_output: lastResponseBody,
       }]);
       log.info(
-        { taskId: payload.task_id, retries: retryCount, statusCode: result.statusCode },
+        { taskId: payload.task_id, retries: retryCount, statusCode: result.statusCode, response_body: lastResponseBody },
         'callback_success',
       );
       return { success: true, body: bodyStr, responseBody: result.responseBody, lastStatusCode: result.statusCode, retryCount };
     }
   }
 
-  const errMsg = '回调失败，已重试 ' + maxRetries + ' 次';
+  const httpInfo = lastStatusCode ? `HTTP ${lastStatusCode}` : '';
+  const errInfo = lastError ? (httpInfo ? ` (${httpInfo}: ${lastError})` : ` (${lastError})`) : (httpInfo ? ` (${httpInfo})` : '');
+  const errMsg = `回调失败${errInfo}，已重试 ${maxRetries} 次`;
   onStream?.([{
     ts: ts(),
     type: 'error',
-    text: `回调失败 (HTTP ${lastStatusCode ?? 'unknown'})，已重试 ${maxRetries} 次`,
+    text: errMsg,
     tool_output: lastResponseBody,
   }]);
   log.error(
-    { taskId: payload.task_id, retries: maxRetries, lastStatusCode, last_response_body: lastResponseBody },
+    { taskId: payload.task_id, retries: maxRetries, lastStatusCode, lastError, last_response_body: lastResponseBody },
     'callback_all_retries_failed',
   );
   return { success: false, body: bodyStr, responseBody: lastResponseBody, lastStatusCode, retryCount: maxRetries, errorMsg: errMsg };

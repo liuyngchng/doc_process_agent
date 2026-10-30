@@ -13,6 +13,10 @@ export function createProcessRouter(cfg: Config): Router {
   // POST /api/v1/:path — 通配路由，path 可以是 document/classify 等任意路径
   router.post('/api/v1/*', (req: Request, res: Response) => {
     const interfacePath = req.params[0] || '';
+
+    // 第一时间打印收到的请求数据（无论对错）
+    log.debug({ path: interfacePath, body: req.body }, 'request_received');
+
     if (!interfacePath) {
       const resp = buildResponse(1001, '缺少接口路径', '', '');
       log.warn({ request: req.body, response: resp }, 'request_missing_path');
@@ -67,7 +71,7 @@ export function createProcessRouter(cfg: Config): Router {
     const resp = buildResponse(0, 'success', task_id, body.linkid);
     // 持久化同步响应（对方调用我时，我方立即返回的 JSON）
     taskLogsStore.updateResult(task_id, { request_response: JSON.stringify(resp) });
-    log.info({ task_id, linkid: body.linkid, path: interfacePath, request: body, response: resp }, 'api_request_completed');
+    log.info({ task_id, linkid: body.linkid, path: interfacePath, response: resp }, 'api_request_completed');
     res.json(resp);
   });
 

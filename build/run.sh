@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# doc_process_agent deploy script
+# dp_agt deploy script
 # Usage: ./deploy.sh [start|stop|restart|logs|status]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-IMAGE="doc_process_agent:0.1.0"
-CONTAINER="${CONTAINER:-doc_process_agent}"
+IMAGE="dp_agt:0.1.0"
+CONTAINER="${CONTAINER:-dp_agt}"
 HOST_PORT="${HOST_PORT:-20001}"
 DATA_DIR="${DATA_DIR:-$(pwd)/data}"
 NETWORK="${NETWORK:-llm_net}"

@@ -78,7 +78,7 @@ function buildClaudeMd(docUtilUrl: string, renewFileUrlApi: string, docAuditUrl:
 接口令牌通过环境变量 \`FILE_URL_TOKEN\` 提供，**不要在日志或屏幕上输出此 Token**。
 
 \`\`\`bash
-curl -s -k --noproxy '*' -X POST '${renewFileUrlApi}' \\
+curl -s -k --noproxy '*' -w'\\n' -X POST '${renewFileUrlApi}' \\
   -H 'Content-Type: application/json' \\
   -H "Authorization: Bearer $FILE_URL_TOKEN" \\
   -d '{"fileId": "<文件ID>", "getFileUrlType": "download"}' | jq -r '.data'
@@ -101,7 +101,7 @@ curl -s -k --noproxy '*' -X POST '${renewFileUrlApi}' \\
 ### 提交审稿任务
 
 \`\`\`bash
-curl -s -k --noproxy '*' -X POST '${docAuditUrl}' \\
+curl -s -k --noproxy '*' -w'\\n' -X POST '${docAuditUrl}' \\
   -H "x-api-key: $DOC_AUDIT_TOKEN" \\
   -F "file=@正文.docx" \\
   -F "callback_url=http://localhost:${serverPort}/api/dev/null" \\
@@ -115,7 +115,7 @@ curl -s -k --noproxy '*' -X POST '${docAuditUrl}' \\
 ### 轮询获取结果
 
 \`\`\`bash
-curl -s -k --noproxy '*' -X GET '${docAuditUrl}/task?id=<审稿task_id>' \\
+curl -s -k --noproxy '*' -w'\\n' -X GET '${docAuditUrl}/task?id=<审稿task_id>' \\
   -H "x-api-key: $DOC_AUDIT_TOKEN" | jq '.'
 \`\`\`
 
@@ -130,14 +130,14 @@ curl -s -k --noproxy '*' -X GET '${docAuditUrl}/task?id=<审稿task_id>' \\
 - \`data.tokens\`: Token 消耗统计
 ` : '';
 
-  return `# doc_process_agent 工作区
+  return `# dp_agt 工作区
 
 你是电子公文处理智能体，运行在这个临时工作目录中。
 
 ## 文件下载
 - 对方传递的 JSON 中的文件 URL 已开放白名单，无需认证
 - 如果文件 URL 需要认证，可用环境变量 \`FILE_URL_TOKEN\`（Bearer Token）下载：
-  \`curl -s -k --noproxy '*' -H "Authorization: Bearer $FILE_URL_TOKEN" '<file_url>' -o 文件名\`
+  \`curl -s -k --noproxy '*' -w'\\n' -H "Authorization: Bearer $FILE_URL_TOKEN" '<file_url>' -o 文件名\`
 - 用 curl 下载文件到当前工作目录
 ${wpsSection}
 ## 文档解析服务
@@ -146,7 +146,7 @@ ${wpsSection}
 同时自动检测印章。文字版和扫描版 PDF 均支持。
 
 \`\`\`bash
-curl -s -k --noproxy '*' -X POST ${docUtilUrl}/extract/txt \\
+curl -s -k --noproxy '*' -w'\\n' -X POST ${docUtilUrl}/extract/txt \\
   -F "file=@文件名" | jq '.'
 \`\`\`
 
@@ -158,7 +158,7 @@ curl -s -k --noproxy '*' -X POST ${docUtilUrl}/extract/txt \\
 
 示例:
 \`\`\`bash
-curl -s -k --noproxy '*' -X POST ${docUtilUrl}/extract/txt \\
+curl -s -k --noproxy '*' -w'\\n' -X POST ${docUtilUrl}/extract/txt \\
   -F "file=@document.pdf" | jq -r '.text'
 \`\`\`
 

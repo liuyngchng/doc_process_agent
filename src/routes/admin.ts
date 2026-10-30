@@ -142,6 +142,9 @@ export function createAdminRouter(cfg: Config): Router {
       request_body?: Record<string, unknown>;
     };
 
+    // 第一时间打印收到的模拟请求数据
+    log.debug({ path: interface_path, body: request_body }, 'simulate_request_received');
+
     if (!interface_path) {
       const resp = { code: 1001, timestamp: nowStr(), message: '缺少 interface_path' };
       log.warn({ request: req.body, response: resp }, 'simulate_missing_path');
@@ -168,9 +171,9 @@ export function createAdminRouter(cfg: Config): Router {
     const callbackUrl = (request_body.callback_url as string) || '';
 
     const body: ProcessRequest = {
+      ...request_body,
       linkid,
       callback_url: callbackUrl,
-      ...request_body,
     };
 
     const { task_id } = enqueue(iface, body);
@@ -185,6 +188,7 @@ export function createAdminRouter(cfg: Config): Router {
     };
     taskLogsStore.updateResult(task_id, { request_response: JSON.stringify(simulateResp) });
 
+    log.info({ task_id, linkid, path: iface.path, callback_url: callbackUrl, response: simulateResp }, 'simulate_task_enqueued');
     res.json(simulateResp);
   });
 

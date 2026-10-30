@@ -1,4 +1,4 @@
-# doc_process_agent — 电子公文智能处理 Agent
+# dp_agt — 电子公文智能处理 Agent
 
 **版本**: V1.0-DRAFT  
 **日期**: 2026-10-27  
@@ -41,7 +41,7 @@
 ## 2. 系统架构
 
 ```
-电子公文系统                                              doc_process_agent
+电子公文系统                                              dp_agt
      |                                                         |
      |  POST /api/v1/document/classify                         |
      |  {                                                      |
@@ -307,7 +307,7 @@ await fs.mkdir(workDir, { recursive: true });
 
 // 写入 CLAUDE.md 设定基本行为规范
 await fs.writeFile(path.join(workDir, 'CLAUDE.md'),
-  `# doc_process_agent 工作规范
+  `# dp_agt 工作规范
 
 你是电子公文处理智能体。你的任务是根据提示词分析电子公文并输出结构化结果。
 
@@ -357,7 +357,7 @@ for await (const message of q) {
 ### 5.3 项目结构
 
 ```
-doc_process_agent/
+dp_agt/
 ├── package.json
 ├── tsconfig.json
 ├── src/
@@ -476,7 +476,7 @@ pending → processing → success → completed (回调成功)
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│  doc_process_agent 管理后台                           │
+│  dp_agt 管理后台                           │
 │──────────────────────────────────────────────────────│
 │                                                      │
 │  [接口管理] [任务日志] [系统设置]                        │
@@ -581,7 +581,7 @@ admin / 初始密码 (首次登录强制修改)
 ### 8.1 目录挂载
 
 ```
-doc_process_agent 容器:
+dp_agt 容器:
   挂载点: /app/data/
   内容:
     data/cfg.yml        — 配置文件

@@ -1,5 +1,5 @@
 {
-  "name": "doc-process-agent",
+  "name": "dp-agt",
   "version": "0.1.0",
   "description": "电子公文智能处理 — Claude Code Agent SDK 网关",
   "type": "module",
