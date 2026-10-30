@@ -13,13 +13,14 @@ export function createProcessRouter(cfg: Config): Router {
   // POST /api/v1/:path — 通配路由，path 可以是 document/classify 等任意路径
   router.post('/api/v1/*', (req: Request, res: Response) => {
     const interfacePath = req.params[0] || '';
+    const fromIp = req.ip || '';
 
     // 第一时间打印收到的请求数据（无论对错）
-    log.debug({ path: interfacePath, body: req.body }, 'request_received');
+    log.debug({ from_ip: fromIp, path: interfacePath, body: req.body }, 'request_received');
 
     if (!interfacePath) {
       const resp = buildResponse(1001, '缺少接口路径', '', '');
-      log.warn({ request: req.body, response: resp }, 'request_missing_path');
+      log.warn({ from_ip: fromIp, request: req.body, response: resp }, 'request_missing_path');
       res.status(404).json(resp);
       return;
     }
@@ -28,7 +29,7 @@ export function createProcessRouter(cfg: Config): Router {
     const iface = interfacesStore.getByPath(interfacePath);
     if (!iface) {
       const resp = buildResponse(1001, '接口不存在: ' + interfacePath, '', '');
-      log.warn({ path: interfacePath, request: req.body, response: resp }, 'request_interface_not_found');
+      log.warn({ from_ip: fromIp, path: interfacePath, request: req.body, response: resp }, 'request_interface_not_found');
       res.status(404).json(resp);
       return;
     }
@@ -36,19 +37,19 @@ export function createProcessRouter(cfg: Config): Router {
     const body = req.body as ProcessRequest;
     if (!body || typeof body !== 'object') {
       const resp = buildResponse(1001, '请求体不能为空', '', '');
-      log.warn({ rawBody: req.body, request: req.body, response: resp }, 'request_empty_body');
+      log.warn({ from_ip: fromIp, rawBody: req.body, request: req.body, response: resp }, 'request_empty_body');
       res.status(400).json(resp);
       return;
     }
     if (!body.linkid) {
       const resp = buildResponse(1001, '缺少 linkid', '', '');
-      log.warn({ request: req.body, response: resp }, 'request_missing_linkid');
+      log.warn({ from_ip: fromIp, request: req.body, response: resp }, 'request_missing_linkid');
       res.status(400).json(resp);
       return;
     }
     if (!body.callback_url) {
       const resp = buildResponse(1001, '缺少 callback_url', '', '');
-      log.warn({ request: req.body, response: resp }, 'request_missing_callback_url');
+      log.warn({ from_ip: fromIp, request: req.body, response: resp }, 'request_missing_callback_url');
       res.status(400).json(resp);
       return;
     }
@@ -60,7 +61,7 @@ export function createProcessRouter(cfg: Config): Router {
       const msg = '任务队列已满，当前处理中任务数 ' + activeCount + '/' + maxPending +
         '（最大并发 ' + cfg.sys.max_concurrent_tasks + '，最大排队 ' + maxPending + '），请稍后重试';
       const resp = buildResponse(2002, msg, '', body.linkid);
-      log.warn({ linkid: body.linkid, path: interfacePath, activeCount, maxPending, request: body, response: resp }, 'request_queue_full');
+      log.warn({ from_ip: fromIp, linkid: body.linkid, path: interfacePath, activeCount, maxPending, request: body, response: resp }, 'request_queue_full');
       res.status(503).json(resp);
       return;
     }
@@ -71,7 +72,7 @@ export function createProcessRouter(cfg: Config): Router {
     const resp = buildResponse(0, 'success', task_id, body.linkid);
     // 持久化同步响应（对方调用我时，我方立即返回的 JSON）
     taskLogsStore.updateResult(task_id, { request_response: JSON.stringify(resp) });
-    log.info({ task_id, linkid: body.linkid, path: interfacePath, response: resp }, 'api_request_completed');
+    log.info({ from_ip: fromIp, task_id, linkid: body.linkid, path: interfacePath, response: resp }, 'api_request_completed');
     res.json(resp);
   });
 

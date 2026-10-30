@@ -9,9 +9,9 @@ export function createTasksRouter(): Router {
   const router = Router();
 
   // GET /api/v1/tasks — 查询进行中任务
-  router.get('/api/v1/tasks', (_req: Request, res: Response) => {
+  router.get('/api/v1/tasks', (req: Request, res: Response) => {
     const tasks = taskLogsStore.listActive();
-    log.info({ count: tasks.length }, 'api_list_tasks');
+    log.info({ from_ip: req.ip || '', count: tasks.length }, 'api_list_tasks');
     res.json({
       code: 0,
       timestamp: now(),
@@ -35,41 +35,48 @@ export function createTasksRouter(): Router {
   // DELETE /api/v1/tasks/:task_id — 取消任务
   router.delete('/api/v1/tasks/:task_id', (req: Request, res: Response) => {
     const { task_id } = req.params;
+    const fromIp = req.ip || '';
     const task = taskLogsStore.get(task_id);
 
     if (!task) {
-      log.warn({ task_id }, 'api_cancel_task_not_found');
+      log.warn({ from_ip: fromIp, task_id }, 'api_cancel_task_not_found');
       res.status(404).json({ code: 1001, message: '任务不存在或已结束', task_id: '', linkid: '' });
       return;
     }
     if (task.status !== 'pending') {
-      log.warn({ task_id, status: task.status, linkid: task.linkid }, 'api_cancel_task_rejected');
+      log.warn({ from_ip: fromIp, task_id, status: task.status, linkid: task.linkid }, 'api_cancel_task_rejected');
       res.json({ code: 1001, message: '任务正在处理中，无法取消', task_id, linkid: task.linkid || '' });
       return;
     }
 
     taskLogsStore.updateStatus(task_id, 'cancelled');
-    log.info({ task_id, linkid: task.linkid }, 'api_cancel_task_ok');
+    taskLogsStore.appendStream(task_id, [{
+      ts: new Date().toISOString().slice(11, 23),
+      type: 'system',
+      text: '外部系统通过 API 取消了该任务（DELETE /api/v1/tasks/' + task_id + '，来自 ' + fromIp + '）',
+    }]);
+    log.info({ from_ip: fromIp, task_id, linkid: task.linkid }, 'api_cancel_task_ok');
     res.json({ code: 0, message: '任务已取消', task_id, linkid: task.linkid || '' });
   });
 
   // GET /api/v1/task/trace?taskid=xxx — 任务追踪
   router.get('/api/v1/task/trace', (req: Request, res: Response) => {
     const taskId = typeof req.query.taskid === 'string' ? req.query.taskid : '';
+    const fromIp = req.ip || '';
     if (!taskId) {
-      log.warn({}, 'api_task_trace_missing_taskid');
+      log.warn({ from_ip: fromIp }, 'api_task_trace_missing_taskid');
       res.status(400).json({ code: 1001, message: '缺少 taskid 参数', task_id: '', linkid: '' });
       return;
     }
 
     const task = taskLogsStore.get(taskId);
     if (!task) {
-      log.warn({ task_id: taskId }, 'api_task_trace_not_found');
+      log.warn({ from_ip: fromIp, task_id: taskId }, 'api_task_trace_not_found');
       res.status(404).json({ code: 1001, message: '任务不存在', task_id: '', linkid: '' });
       return;
     }
 
-    log.info({ task_id: taskId, linkid: task.linkid, status: task.status }, 'api_task_trace');
+    log.info({ from_ip: fromIp, task_id: taskId, linkid: task.linkid, status: task.status }, 'api_task_trace');
     res.json({
       code: 0,
       timestamp: now(),
@@ -95,21 +102,22 @@ export function createTasksRouter(): Router {
   // GET /api/v1/task/stream?taskid=xxx — 实时流式输出
   router.get('/api/v1/task/stream', (req: Request, res: Response) => {
     const taskId = typeof req.query.taskid === 'string' ? req.query.taskid : '';
+    const fromIp = req.ip || '';
     if (!taskId) {
-      log.warn({}, 'api_task_stream_missing_taskid');
+      log.warn({ from_ip: fromIp }, 'api_task_stream_missing_taskid');
       res.status(400).json({ code: 1001, message: '缺少 taskid 参数', task_id: '', linkid: '' });
       return;
     }
 
     const task = taskLogsStore.get(taskId);
     if (!task) {
-      log.warn({ task_id: taskId }, 'api_task_stream_not_found');
+      log.warn({ from_ip: fromIp, task_id: taskId }, 'api_task_stream_not_found');
       res.status(404).json({ code: 1001, message: '任务不存在', task_id: '', linkid: '' });
       return;
     }
 
     const stream = taskLogsStore.getStream(taskId);
-    log.info({ task_id: taskId, linkid: task.linkid, status: task.status, entries: stream.length }, 'api_task_stream');
+    log.info({ from_ip: fromIp, task_id: taskId, linkid: task.linkid, status: task.status, entries: stream.length }, 'api_task_stream');
     res.json({
       code: 0,
       timestamp: now(),
@@ -123,11 +131,12 @@ export function createTasksRouter(): Router {
   // GET /api/v1/task/log/:task_id?format=json|html — 任务审计日志时间线
   router.get('/api/v1/task/log/:task_id', (req: Request, res: Response) => {
     const { task_id } = req.params;
+    const fromIp = req.ip || '';
     const format = typeof req.query.format === 'string' ? req.query.format.toLowerCase() : 'json';
 
     const task = taskLogsStore.get(task_id);
     if (!task) {
-      log.warn({ task_id }, 'api_task_log_not_found');
+      log.warn({ from_ip: fromIp, task_id }, 'api_task_log_not_found');
       if (format === 'html') {
         res.status(404).contentType('text/html; charset=utf-8').send(
           htmlPage('任务不存在', '', '', '', '', null, null, '', [])
@@ -142,7 +151,7 @@ export function createTasksRouter(): Router {
     const events = buildTimelineEvents(task, stream);
     const linkid = task.linkid || '';
 
-    log.info({ task_id, linkid, status: task.status, format, events: events.length }, 'api_task_log');
+    log.info({ from_ip: fromIp, task_id, linkid, status: task.status, format, events: events.length }, 'api_task_log');
 
     if (format === 'html') {
       res.contentType('text/html; charset=utf-8').send(

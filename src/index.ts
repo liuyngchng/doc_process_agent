@@ -61,6 +61,10 @@ log.info('task_queue_ready');
 // Express
 const app = express();
 
+// 信任反向代理头（X-Forwarded-For），使 req.ip 能取到真实客户端 IP。
+// 直连/端口映射场景下无此头时，req.ip 退化为 socket 对端地址。
+app.set('trust proxy', true);
+
 // 在 JSON 解析前捕获原始请求体（verify 回调在 express.json 内部拿到 raw buffer）
 app.use(express.json({
   limit: '10mb',
