@@ -508,11 +508,10 @@ header p {
 
 /* 时间列 — 固定宽度，格式 YYYY-MM-DD HH:MM:ss */
 .col-date {
-    width: 148px;
-    min-width: 148px;
-    max-width: 148px;
-    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
-    font-size: 0.82rem;
+    width: 140px;
+    min-width: 140px;
+    max-width: 140px;
+    white-space: nowrap;
 }
 
 /* 序号列 — 固定宽度，最多显示 4 位数 */
@@ -545,10 +544,14 @@ header p {
     justify-content: center;
 }
 
-.path-mono {
-    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
-    font-size: 0.85rem;
-    color: #6c5ce7;
+/* 蓝色图标按钮 — 任务执行过程/结果/时间线 */
+.cfg-btn-icon-primary {
+    color: #4b6cb7;
+    border-color: #b8c7e0;
+}
+.cfg-btn-icon-primary:hover {
+    background: #eef2fb;
+    border-color: #4b6cb7;
 }
 
 /* 状态徽章 */
@@ -597,10 +600,12 @@ header p {
     gap: 8px;
 }
 
-/* “执行过程” 与 “执行结果” 窗口宽度对齐背景页面（.container 为 max-width:1280px） */
+/* “执行过程” 与 “执行结果” 窗口 — 固定高度 */
 #streamModal .modal-lg,
 #taskModal .modal-lg {
     width: min(1280px, calc(100vw - 40px));
+    height: 90vh;
+    overflow: hidden;
 }
 
 .modal-actions {
@@ -622,11 +627,11 @@ header p {
     border-bottom: 1px solid #f0f0f0;
 }
 .kv-key {
-    width: 120px;
     font-weight: 600;
     color: #777;
     vertical-align: top;
     white-space: nowrap;
+    padding-right: 12px;
 }
 .kv-section {
     font-size: 0.9rem;
@@ -637,9 +642,40 @@ header p {
     font-weight: 600;
     display: flex;
     align-items: center;
-    user-select: none;
 }
 .kv-section:hover { color: #3a5a9e; }
+
+/* ---- 执行结果弹窗：信息方框 ---- */
+.task-info-bar {
+    background: #f8f9fb;
+    border: 1px solid #e0e3e8;
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-bottom: 12px;
+}
+.task-info-row {
+    padding: 2px 0;
+    font-size: 0.88rem;
+    color: #444;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.task-info-row .task-info-label {
+    font-weight: 600;
+    color: #777;
+    min-width: 56px;
+}
+.task-info-row code {
+    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+    font-size: 0.82rem;
+    background: #eef1f6;
+    padding: 2px 8px;
+    border-radius: 4px;
+    color: #4b6cb7;
+}
+
 .task-detail-toggle {
     color: #999;
     font-size: 0.75rem;

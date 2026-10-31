@@ -24,7 +24,7 @@ export function createAdminRouter(cfg: Config): Router {
         { id: 'simulate', icon: 'fa-flask', label: '操作模拟' },
         { id: 'tasks', icon: 'fa-list-alt', label: '任务监控' },
       ] : []),
-      { id: 'audit', icon: 'fa-search', label: '日志审查' },
+      { id: 'audit', icon: 'fa-search', label: '任务审查' },
       ...(isAdmin ? [
         { id: 'sys', icon: 'fa-sliders-h', label: '系统设置' },
         { id: 'users', icon: 'fa-users', label: '用户管理' },
@@ -211,7 +211,7 @@ export function createAdminRouter(cfg: Config): Router {
   // 以下所有登录用户可访问
   // ============================================================
 
-  // ---- 日志审查 ----
+  // ---- 任务审查 ----
 
   router.get('/admin/audit', (req: Request, res: Response) => {
     const taskId = typeof req.query.task_id === 'string' ? req.query.task_id.trim() : '';

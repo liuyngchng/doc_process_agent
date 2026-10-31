@@ -404,13 +404,13 @@ function renderTimelineHtml(task: TaskLog, events: TimelineEvent[], linkid: stri
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>任务时间线 — ${escHtml(linkid)}</title>
+<title>任务执行时间线 — ${escHtml(linkid)}</title>
 <style>${TIMELINE_CSS}</style>
 </head>
 <body>
 <div class="wrap">
   <div class="page-head">
-    <h1>&#129302; 任务时间线</h1>
+    <h1>&#129302; 任务执行时间线</h1>
     <div class="meta">
       <div class="meta-line"><span class="meta-label">标题:</span> ${escHtml(title)}</div>
       <div class="meta-line"><span class="meta-label">执行周期:</span> ${escHtml(startStr)} ~ ${escHtml(endStr)}</div>
