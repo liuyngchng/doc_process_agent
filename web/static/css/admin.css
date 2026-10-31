@@ -506,6 +506,15 @@ header p {
 .result-table tbody tr:hover { background: #f8f9fe; }
 .result-table tbody tr:last-child td { border-bottom: none; }
 
+/* 时间列 — 固定宽度，格式 YYYY-MM-DD HH:MM:ss */
+.col-date {
+    width: 148px;
+    min-width: 148px;
+    max-width: 148px;
+    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+    font-size: 0.82rem;
+}
+
 /* 序号列 — 固定宽度，最多显示 4 位数 */
 .col-seq {
     width: 48px;

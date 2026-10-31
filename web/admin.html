@@ -98,7 +98,7 @@
                 <h2><i class="fas fa-list-alt"></i> 任务监控</h2>
                 <div class="table-scroll">
 <table class="result-table">
-                    <thead><tr><th class="col-seq">序号</th><th class="col-title">标题</th><th>访问路径</th><th>状态</th><th>创建时间</th><th>完成时间</th><th class="col-action">执行过程</th><th class="col-action">执行结果</th></tr></thead>
+                    <thead><tr><th class="col-seq">序号</th><th class="col-title">标题</th><th>访问路径</th><th>状态</th><th class="col-date">创建时间</th><th class="col-date">完成时间</th><th class="col-action">执行过程</th><th class="col-action">执行结果</th></tr></thead>
                     <tbody id="tasksTbody"><tr><td colspan="8" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
                 </table>
 </div>
@@ -152,7 +152,7 @@
 
                     <div class="table-scroll">
 <table class="result-table">
-                        <thead><tr><th class="col-seq">序号</th><th class="col-title">标题</th><th>访问路径</th><th>状态</th><th>创建时间</th><th>完成时间</th><th class="col-action">详情</th></tr></thead>
+                        <thead><tr><th class="col-seq">序号</th><th class="col-title">标题</th><th>访问路径</th><th>状态</th><th class="col-date">创建时间</th><th class="col-date">完成时间</th><th class="col-action">详情</th></tr></thead>
                         <tbody id="auditTbody"><tr><td colspan="7" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
                     </table>
 </div>
@@ -438,8 +438,8 @@ function renderTasksPage(list) {
             <td class="col-title"><span title="${escHtml(title)}" onclick="toggleRowDetail('${rid}')" style="cursor:pointer;color:#4b6cb7;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:4px;">${titleDisplay}</span></td>
             <td><span class="path-mono">${escHtml(t.path || '-')}</span></td>
             <td>${statusText(t.status)}</td>
-            <td>${fmtTs(t.created_at)}</td>
-            <td>${fmtTs(t.finished_at)}</td>
+            <td class="col-date">${fmtTs(t.created_at)}</td>
+            <td class="col-date">${fmtTs(t.finished_at)}</td>
             <td class="col-action"><button class="cfg-btn-sm cfg-btn-icon" onclick="viewStream('${taskId}')" title="执行过程"><i class="fas fa-comments"></i></button></td>
             <td class="col-action"><button class="cfg-btn-sm cfg-btn-icon" onclick="viewTask('${taskId}')" title="执行结果"><i class="fas fa-clipboard-check"></i></button></td>
         </tr>
@@ -942,8 +942,8 @@ function renderAuditPage(list) {
             <td class="col-title"><span title="${escHtml(title)}" onclick="toggleRowDetail('${rid}')" style="cursor:pointer;color:#4b6cb7;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:4px;">${titleDisplay}</span></td>
             <td><span class="path-mono">${escHtml(t.path || '-')}</span></td>
             <td>${statusText(t.status)}</td>
-            <td>${fmtTs(t.created_at)}</td>
-            <td>${fmtTs(t.finished_at)}</td>
+            <td class="col-date">${fmtTs(t.created_at)}</td>
+            <td class="col-date">${fmtTs(t.finished_at)}</td>
             <td class="col-action"><button class="cfg-btn-sm cfg-btn-icon" onclick="viewAuditDetail('${taskId}')" title="详情"><i class="fas fa-history"></i></button></td>
         </tr>
         <tr class="row-detail" id="${rid}" style="display:none;">

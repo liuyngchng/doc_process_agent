@@ -2,14 +2,12 @@ import { Router, Request, Response } from 'express';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { networkInterfaces } from 'node:os';
-import { v4 as uuid } from 'uuid';
 import { interfacesStore, taskLogsStore, configStore, usersStore, hashPasswordSync } from '../store.js';
-import { enqueue } from '../services/task-queue.js';
 import { getLogger } from '../logger.js';
 import { nowReadable } from '../time.js';
 import { getCurrentUser, adminOnlyMiddleware, validatePasswordStrength } from './auth.js';
+import { submitTask } from './process.js';
 import type { Config } from '../config.js';
-import type { ProcessRequest } from '../types.js';
 
 const log = getLogger();
 
@@ -143,54 +141,18 @@ export function createAdminRouter(cfg: Config): Router {
       request_body?: Record<string, unknown>;
     };
 
-    // 第一时间打印收到的模拟请求数据
     log.debug({ path: interface_path, body: request_body }, 'simulate_request_received');
 
-    if (!interface_path) {
-      const resp = { code: 1001, timestamp: nowStr(), message: '缺少 interface_path' };
-      log.warn({ request: req.body, response: resp }, 'simulate_missing_path');
-      res.status(400).json(resp);
-      return;
+    // 对外接口完全一致的逻辑：校验接口、队列上限、入队
+    const result = submitTask(interface_path || '', request_body || {}, cfg);
+
+    if (result.status >= 400) {
+      log.warn({ path: interface_path, request: request_body, response: result.body }, 'simulate_request_rejected');
+    } else {
+      log.info({ task_id: result.body.task_id, linkid: result.body.linkid, path: interface_path, response: result.body }, 'simulate_task_enqueued');
     }
 
-    const iface = interfacesStore.getByPath(interface_path);
-    if (!iface) {
-      const resp = { code: 1001, timestamp: nowStr(), message: '访问路径不存在: ' + interface_path };
-      log.warn({ request: req.body, response: resp }, 'simulate_interface_not_found');
-      res.status(404).json(resp);
-      return;
-    }
-
-    if (!request_body || typeof request_body !== 'object') {
-      const resp = { code: 1001, timestamp: nowStr(), message: '请求体不能为空' };
-      log.warn({ request: req.body, response: resp }, 'simulate_empty_body');
-      res.status(400).json(resp);
-      return;
-    }
-
-    const linkid = (request_body.linkid as string) || 'sim-' + uuid().slice(0, 8);
-    const callbackUrl = (request_body.callback_url as string) || '';
-
-    const body: ProcessRequest = {
-      ...request_body,
-      linkid,
-      callback_url: callbackUrl,
-    };
-
-    const { task_id } = enqueue(iface, body);
-    log.info({ task_id, linkid, path: iface.path, callback_url: callbackUrl }, 'simulate_task_enqueued');
-
-    const simulateResp = {
-      code: 0,
-      timestamp: nowStr(),
-      message: '任务已创建',
-      task_id,
-      linkid,
-    };
-    taskLogsStore.updateResult(task_id, { request_response: JSON.stringify(simulateResp) });
-
-    log.info({ task_id, linkid, path: iface.path, callback_url: callbackUrl, response: simulateResp }, 'simulate_task_enqueued');
-    res.json(simulateResp);
+    res.status(result.status).json(result.body);
   });
 
   // ---- 任务监控 ----
@@ -225,6 +187,7 @@ export function createAdminRouter(cfg: Config): Router {
     }
     res.json({ code: 0, data: {
       ...task,
+      title: extractTitle(task.request_body),
       request_body: safeParse(task.request_body),
       request_response: safeParse(task.request_response),
       callback_body: safeParse(task.callback_body),
@@ -447,8 +410,4 @@ function detectPrimaryIp(): string {
     }
   }
   return candidates[0] || '127.0.0.1';
-}
-
-function nowStr(): string {
-  return nowReadable();
 }

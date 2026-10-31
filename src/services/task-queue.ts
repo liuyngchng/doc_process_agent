@@ -5,7 +5,7 @@
  */
 import { v4 as uuid } from 'uuid';
 import { getLogger } from '../logger.js';
-import { taskLogsStore } from '../store.js';
+import { taskLogsStore, interfacesStore } from '../store.js';
 import { renderPrompt } from './prompt-engine.js';
 import { runAgent } from './sdk-runner.js';
 import { deliverCallback } from './callback.js';
@@ -129,6 +129,54 @@ async function pump(): Promise<void> {
 export function initTaskQueue(c: Config): void {
   cfg = c;
   worker = processItem;
+  recoverOrphanedTasks();
+}
+
+/** 启动时恢复上次未完成的任务 */
+function recoverOrphanedTasks(): void {
+  const active = taskLogsStore.listActive();
+  if (active.length === 0) return;
+
+  let resumed = 0;
+  let killed = 0;
+
+  for (const task of active) {
+    if (task.status === 'pending') {
+      // 排队中 → 重新入队
+      const iface = interfacesStore.get(task.interface_id || '');
+      if (!iface) {
+        // 找不到接口定义，标记失败
+        taskLogsStore.updateResult(task.task_id, {
+          status: 'failed' as TaskStatus,
+          error_message: '服务重启：关联的接口模板已被删除',
+          finished_at: nowLocal(),
+          finished_ts: nowTs(),
+        });
+        killed++;
+        continue;
+      }
+
+      let body: ProcessRequest;
+      try { body = JSON.parse(task.request_body); } catch { continue; }
+
+      pending.push({ task_id: task.task_id, path: task.path, iface, body });
+      resumed++;
+    } else if (task.status === 'processing') {
+      // 处理中 → 进程已死，标记失败
+      taskLogsStore.updateResult(task.task_id, {
+        status: 'failed' as TaskStatus,
+        error_message: '服务重启：任务被中断（原进程已退出）',
+        finished_at: nowLocal(),
+        finished_ts: nowTs(),
+      });
+      killed++;
+    }
+  }
+
+  log.info({ resumed, killed }, 'task_queue_recovered');
+
+  // 恢复后立刻触发消费
+  if (pending.length > 0) pump().catch(() => {});
 }
 
 export function enqueue(iface: AgentInterface, body: ProcessRequest): { task_id: string } {
