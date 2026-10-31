@@ -234,7 +234,7 @@ header p {
 }
 .pwd-field input {
     width: 100%;
-    padding: 10px 12px;
+    padding: 10px 36px 10px 12px;
     border: 2px solid #e0e3e8;
     border-radius: 6px;
     font-size: 0.9rem;
@@ -242,6 +242,26 @@ header p {
 .pwd-field input:focus {
     outline: none;
     border-color: #4b6cb7;
+}
+.pwd-input-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+.pwd-input-wrap input {
+    flex: 1;
+}
+.pwd-eye {
+    position: absolute;
+    right: 10px;
+    color: #999;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: color 0.15s;
+    user-select: none;
+}
+.pwd-eye:hover {
+    color: #4b6cb7;
 }
 .pwd-hint {
     font-size: 0.75rem;
@@ -485,6 +505,14 @@ header p {
 
 .result-table tbody tr:hover { background: #f8f9fe; }
 .result-table tbody tr:last-child td { border-bottom: none; }
+
+/* 序号列 — 固定宽度，最多显示 4 位数 */
+.col-seq {
+    width: 48px;
+    min-width: 48px;
+    max-width: 48px;
+    text-align: center;
+}
 
 /* 标题列 — 来源不可控，设最大宽度，溢出省略 */
 .col-title {

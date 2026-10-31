@@ -392,6 +392,12 @@ export const taskLogsStore = {
   get(taskId: string): TaskLog | undefined {
     return db.prepare('SELECT * FROM task_logs WHERE task_id = ?').get(taskId) as TaskLog | undefined;
   },
+  /** 按 linkid 取最新一条任务（linkid 不唯一，按创建时间倒序） */
+  getLatestByLinkid(linkid: string): TaskLog | undefined {
+    return db.prepare(
+      'SELECT * FROM task_logs WHERE linkid = ? ORDER BY created_at DESC LIMIT 1'
+    ).get(linkid) as TaskLog | undefined;
+  },
   list(limit = 100): TaskLog[] {
     return db.prepare('SELECT * FROM task_logs ORDER BY created_at DESC LIMIT ?').all(limit) as TaskLog[];
   },

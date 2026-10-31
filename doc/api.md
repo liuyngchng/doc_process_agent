@@ -307,7 +307,7 @@ curl -k -w'\n' --noproxy '*' "https://localhost:20001/api/v1/task/stream?taskid=
 GET /api/v1/task/log/<task_id>[?format=json|html]
 ```
 
-查看任务生命周期的时间线，按创建 → 渲染 → 执行 → 回调的顺序展示完整事件链。支持 JSON（默认）和 HTML 两种格式。
+查看任务生命周期的时间线，按创建 → 渲染 → 执行 → 回调的顺序展示完整事件链。默认返回 HTML（`format=html`），指定 `?format=json` 返回 JSON。
 
 **响应** (200, `format=json`)
 
@@ -331,13 +331,19 @@ GET /api/v1/task/log/<task_id>[?format=json|html]
         "time": "2026-01-01 12:00:00",
         "type": "create",
         "title": "任务创建",
-        "detail": "接口: document/classify"
+        "detail": "访问路径: document/classify"
       },
       {
         "time": "2026-01-01 12:00:00",
         "type": "input",
         "title": "收到请求数据",
         "detail": "{\n  \"linkid\": \"doc_001\", ...\n}"
+      },
+      {
+        "time": "2026-01-01 12:00:00",
+        "type": "output",
+        "title": "返回同步响应",
+        "detail": "{\"code\":0,\"task_id\":\"...\"}"
       },
       {
         "time": "2026-01-01 12:00:00",
@@ -366,7 +372,7 @@ GET /api/v1/task/log/<task_id>[?format=json|html]
       {
         "time": "2026-01-01 12:02:30",
         "type": "done",
-        "title": "任务完成",
+        "title": "已完成",
         "detail": ""
       }
     ]
@@ -374,17 +380,36 @@ GET /api/v1/task/log/<task_id>[?format=json|html]
 }
 ```
 
-`format=html` 时返回一个可直接在浏览器中查看的 HTML 页面，带时间线可视化。
+`format=html`（默认）时返回一个可直接在浏览器中查看的 HTML 页面，带时间线可视化。
 
 **示例**
 
 ```bash
+# HTML 格式（默认）
+curl -k -w'\n' --noproxy '*' "https://localhost:20001/api/v1/task/log/550e8400-e29b-41d4-a716-446655440000" \
+  -H "Authorization: Bearer your_api_token"
+
 # JSON 格式
 curl -k -w'\n' --noproxy '*' "https://localhost:20001/api/v1/task/log/550e8400-e29b-41d4-a716-446655440000?format=json" \
   -H "Authorization: Bearer your_api_token"
+```
 
-# HTML 格式
-curl -k -w'\n' --noproxy '*' "https://localhost:20001/api/v1/task/log/550e8400-e29b-41d4-a716-446655440000?format=html" \
+---
+
+## 7. 按 linkid 查询任务审计日志
+
+```
+GET /api/v1/task/link/log/<linkid>[?format=json|html]
+```
+
+与 `GET /api/v1/task/log/<task_id>` 逻辑一致，但按 `linkid` 查询。由于 linkid 不保证唯一，服务端按任务创建时间倒序取**最新一条**记录渲染。
+
+**响应 / 示例**
+
+与任务审计日志接口完全相同，仅 URL 中的标识符换成 linkid：
+
+```bash
+curl -k -w'\n' --noproxy '*' "https://localhost:20001/api/v1/task/link/log/doc_001?format=json" \
   -H "Authorization: Bearer your_api_token"
 ```
 
@@ -396,7 +421,6 @@ curl -k -w'\n' --noproxy '*' "https://localhost:20001/api/v1/task/log/550e8400-e
 |------|------|
 | `pending` | 排队等待处理 |
 | `processing` | 智能体正在执行 |
-| `success` | 智能体执行成功，等待/正在回调 |
 | `completed` | 回调成功，任务完结 |
 | `failed` | 智能体执行失败 |
 | `callback_fail` | 回调重试耗尽，最终失败 |

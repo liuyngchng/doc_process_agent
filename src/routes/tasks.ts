@@ -133,15 +133,16 @@ export function createTasksRouter(): Router {
   router.get('/api/v1/task/log/:task_id', (req: Request, res: Response) => {
     const { task_id } = req.params;
     const fromIp = req.ip || '';
-    const format = typeof req.query.format === 'string' ? req.query.format.toLowerCase() : 'json';
+    const format = typeof req.query.format === 'string' ? req.query.format.toLowerCase() : 'html';
 
     const task = taskLogsStore.get(task_id);
     if (!task) {
       log.warn({ from_ip: fromIp, task_id }, 'api_task_log_not_found');
       if (format === 'html') {
-        res.status(404).contentType('text/html; charset=utf-8').send(
-          htmlPage('任务不存在', '', '', '', '', null, null, '', [])
-        );
+        res.status(404).contentType('text/html; charset=utf-8').send(`<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>任务不存在</title>
+<style>${TIMELINE_CSS}</style></head>
+<body><div class="wrap"><div class="page-head"><h1>任务不存在</h1></div></div></body></html>`);
         return;
       }
       res.status(404).json({ code: 1001, message: '任务不存在', task_id: '', linkid: '' });
@@ -162,6 +163,58 @@ export function createTasksRouter(): Router {
     }
 
     // 默认 JSON
+    res.json({
+      code: 0,
+      timestamp: now(),
+      message: 'success',
+      task_id: task.task_id,
+      linkid: task.linkid,
+      data: {
+        task_id: task.task_id,
+        linkid: task.linkid,
+        path: task.path,
+        status: task.status,
+        callback_url: task.callback_url,
+        error_message: task.error_message,
+        created_at: task.created_at,
+        finished_at: task.finished_at,
+        timeline: events,
+      },
+    });
+  });
+
+  // GET /api/v1/task/link/log/:linkid — 按 linkid 查最新一条任务时间线
+  router.get('/api/v1/task/link/log/:linkid', (req: Request, res: Response) => {
+    const { linkid } = req.params;
+    const fromIp = req.ip || '';
+    const format = typeof req.query.format === 'string' ? req.query.format.toLowerCase() : 'html';
+
+    const task = taskLogsStore.getLatestByLinkid(linkid);
+    if (!task) {
+      log.warn({ from_ip: fromIp, linkid }, 'api_task_link_log_not_found');
+      if (format === 'html') {
+        res.status(404).contentType('text/html; charset=utf-8').send(`<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>任务不存在</title>
+<style>${TIMELINE_CSS}</style></head>
+<body><div class="wrap"><div class="page-head"><h1>任务不存在</h1></div></div></body></html>`);
+        return;
+      }
+      res.status(404).json({ code: 1001, message: '任务不存在', task_id: '', linkid: '' });
+      return;
+    }
+
+    const stream = taskLogsStore.getStream(task.task_id);
+    const events = buildTimelineEvents(task, stream);
+
+    log.info({ from_ip: fromIp, task_id: task.task_id, linkid, status: task.status, format, events: events.length }, 'api_task_link_log');
+
+    if (format === 'html') {
+      res.contentType('text/html; charset=utf-8').send(
+        renderTimelineHtml(task, events, linkid)
+      );
+      return;
+    }
+
     res.json({
       code: 0,
       timestamp: now(),
@@ -303,23 +356,33 @@ function buildTimelineEvents(task: TaskLog, stream: StreamEntry[]): TimelineEven
 // HTML 时间线页面渲染
 // ============================================================
 
+const TIMELINE_CSS = `*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f5f6fa;color:#333;padding:40px 20px}
+.wrap{max-width:960px;margin:0 auto;background:#fff;border-radius:12px;box-shadow:0 2px 16px rgba(0,0,0,.08);overflow:hidden}
+.page-head{padding:28px 36px;background:linear-gradient(to right,#4b6cb7,#182848);color:#fff}
+.page-head h1{font-size:1.4rem;display:flex;align-items:center;gap:10px}
+.page-head .meta{margin-top:10px;font-size:.85rem;opacity:.85;display:flex;flex-direction:column;gap:6px}
+.meta-line{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.meta-label{font-weight:600;opacity:.9}
+.tl{padding:28px 36px}
+.item{display:flex;gap:14px;padding:14px 0;border-left:2px solid #e0e0e0;margin-left:8px;position:relative}
+.item:last-child{border-left-color:transparent}
+.dot{width:16px;height:16px;border-radius:50%;background:#4b6cb7;flex-shrink:0;margin-left:-9px;margin-top:2px;position:relative;z-index:1}
+.item.error .dot{background:#e53e3e}
+.body{flex:1;min-width:0}
+.ihead{display:flex;flex-wrap:wrap;align-items:center;gap:10px;font-size:.92rem}
+.time{font-family:monospace;font-size:.78rem;color:#888;white-space:nowrap}
+.detail{background:#f7f8fa;border-radius:6px;padding:12px 16px;margin-top:8px;font-size:.82rem;line-height:1.6;white-space:pre-wrap;word-break:break-word;max-height:400px;overflow:auto;border:1px solid #edf2f7}
+.foot{padding:16px 36px;border-top:1px solid #edf2f7;font-size:.78rem;color:#999;text-align:center}`;
+
 function renderTimelineHtml(task: TaskLog, events: TimelineEvent[], linkid: string): string {
   const itemsHtml = events.map((ev, i) => {
     const timeStr = ev.time ? fmtTs(ev.time) : '';
-    const icon = ev.type === 'callback' ? '📤' :
-      ev.type === 'tool' ? '🔧' :
-      ev.type === 'input' ? '📥' :
-      ev.type === 'output' ? '📤' :
-      ev.type === 'done' ? '✅' :
-      ev.type === 'error' ? '❌' :
-      ev.type === 'create' ? '➕' :
-      ev.type === 'prompt' ? '📝' :
-      '🔵';
     const detailBlock = ev.detail
       ? `<pre class="detail">${escHtml(ev.detail)}</pre>`
       : '';
     return `<div class="item ${ev.type}">
-        <div class="dot">${icon}</div>
+        <div class="dot"></div>
         <div class="body">
           <div class="ihead"><span class="time">${escHtml(timeStr)}</span><strong>${i + 1}. ${escHtml(ev.title)}</strong></div>
           ${detailBlock}
@@ -327,67 +390,31 @@ function renderTimelineHtml(task: TaskLog, events: TimelineEvent[], linkid: stri
       </div>`;
   }).join('\n');
 
-  return htmlPage(
-    '任务时间线 — ' + escHtml(linkid || task.task_id?.substring(0, 8) || ''),
-    task.task_id,
-    linkid || task.task_id?.substring(0, 8) || '',
-    task.path || '-',
-    task.status,
-    task.created_at,
-    task.finished_at,
-    itemsHtml,
-    events
-  );
-}
+  const title = task.request_body ? (() => {
+    try {
+      const obj = JSON.parse(task.request_body);
+      return (obj.form_data && (obj.form_data.title || obj.form_data['标题'])) || obj.title || obj['标题'] || '-';
+    } catch { return '-'; }
+  })() : '-';
+  const startStr = fmtTs(task.created_at);
+  const endStr = task.finished_at ? fmtTs(task.finished_at) : '处理中';
 
-function htmlPage(
-  title: string,
-  taskId: string,
-  linkid: string,
-  path: string,
-  status: string,
-  createdAt: string | null,
-  finishedAt: string | null,
-  itemsHtml: string,
-  _events: TimelineEvent[]
-): string {
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${escHtml(title)}</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans SC",sans-serif;background:#f5f6fa;color:#333;padding:40px 20px}
-.wrap{max-width:960px;margin:0 auto;background:#fff;border-radius:12px;box-shadow:0 2px 16px rgba(0,0,0,.08);overflow:hidden}
-.page-head{padding:28px 36px;background:linear-gradient(to right,#4b6cb7,#182848);color:#fff}
-.page-head h1{font-size:1.4rem;display:flex;align-items:center;gap:10px}
-.page-head .meta{margin-top:10px;font-size:.85rem;opacity:.85;display:flex;flex-wrap:wrap;gap:16px}
-.page-head .meta span{display:inline-flex;align-items:center;gap:4px}
-.page-head .badge{display:inline-block;padding:2px 10px;border-radius:10px;font-size:.78rem;font-weight:600;background:rgba(255,255,255,.25)}
-.tl{padding:28px 36px}
-.item{display:flex;gap:14px;padding:14px 0;border-left:2px solid #e0e0e0;margin-left:8px;position:relative}
-.item:last-child{border-left-color:transparent}
-.dot{width:28px;height:28px;border-radius:50%;background:#4b6cb7;flex-shrink:0;margin-left:-15px;display:flex;align-items:center;justify-content:center;font-size:.85rem;position:relative;z-index:1}
-.item.error .dot{background:#e53e3e}
-.body{flex:1;min-width:0}
-.ihead{display:flex;flex-wrap:wrap;align-items:center;gap:10px;font-size:.92rem}
-.time{font-family:monospace;font-size:.78rem;color:#888;white-space:nowrap}
-.detail{background:#f7f8fa;border-radius:6px;padding:12px 16px;margin-top:8px;font-size:.82rem;line-height:1.6;white-space:pre-wrap;word-break:break-word;max-height:400px;overflow:auto;border:1px solid #edf2f7}
-.foot{padding:16px 36px;border-top:1px solid #edf2f7;font-size:.78rem;color:#999;text-align:center}
-</style>
+<title>任务时间线 — ${escHtml(linkid)}</title>
+<style>${TIMELINE_CSS}</style>
 </head>
 <body>
 <div class="wrap">
   <div class="page-head">
     <h1>&#129302; 任务时间线</h1>
     <div class="meta">
-      <span>LinkID: ${escHtml(linkid)}</span>
-      <span>Task ID: ${escHtml(taskId?.substring(0, 18) || '-')}...</span>
-      <span>访问路径: ${escHtml(path)}</span>
-      <span>${escHtml(statusText(status))}</span>
-      <span>${fmtTs(createdAt)} ~ ${fmtTs(finishedAt)}</span>
+      <div class="meta-line"><span class="meta-label">标题:</span> ${escHtml(title)}</div>
+      <div class="meta-line"><span class="meta-label">执行周期:</span> ${escHtml(startStr)} ~ ${escHtml(endStr)}</div>
+      <div class="meta-line"><span class="meta-label">Task ID:</span> ${escHtml(task.task_id)} <span class="meta-label">Link ID:</span> ${escHtml(linkid)}</div>
     </div>
   </div>
   <div class="tl">${itemsHtml}</div>

@@ -29,7 +29,7 @@
                 </button>
                 <div class="table-scroll">
 <table class="result-table">
-                    <thead><tr><th>#</th><th>功能</th><th>访问路径</th><th>更新时间</th><th>操作</th></tr></thead>
+                    <thead><tr><th class="col-seq">序号</th><th>功能</th><th>访问路径</th><th>更新时间</th><th>操作</th></tr></thead>
                     <tbody id="ifacesTbody"><tr><td colspan="5" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
                 </table>
 </div>
@@ -98,7 +98,7 @@
                 <h2><i class="fas fa-list-alt"></i> 任务监控</h2>
                 <div class="table-scroll">
 <table class="result-table">
-                    <thead><tr><th>#</th><th class="col-title">标题</th><th>访问路径</th><th>状态</th><th>创建时间</th><th>完成时间</th><th class="col-action">执行过程</th><th class="col-action">执行结果</th></tr></thead>
+                    <thead><tr><th class="col-seq">序号</th><th class="col-title">标题</th><th>访问路径</th><th>状态</th><th>创建时间</th><th>完成时间</th><th class="col-action">执行过程</th><th class="col-action">执行结果</th></tr></thead>
                     <tbody id="tasksTbody"><tr><td colspan="8" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
                 </table>
 </div>
@@ -152,7 +152,7 @@
 
                     <div class="table-scroll">
 <table class="result-table">
-                        <thead><tr><th>#</th><th class="col-title">标题</th><th>访问路径</th><th>状态</th><th>创建时间</th><th>完成时间</th><th class="col-action">详情</th></tr></thead>
+                        <thead><tr><th class="col-seq">序号</th><th class="col-title">标题</th><th>访问路径</th><th>状态</th><th>创建时间</th><th>完成时间</th><th class="col-action">详情</th></tr></thead>
                         <tbody id="auditTbody"><tr><td colspan="7" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
                     </table>
 </div>
@@ -164,7 +164,7 @@
                             <h3 style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
                                 <span><i class="fas fa-history"></i> 任务时间线</span>
                                 <button type="button" class="cfg-btn cfg-btn-primary" onclick="exportAuditMd()" style="margin-left:auto;"><i class="fas fa-download"></i> 导出</button>
-                                <button type="button" class="cfg-btn cfg-btn-reset" onclick="closeAuditDetail()">关闭</button>
+                                <button type="button" class="cfg-btn cfg-btn-reset" onclick="closeAuditDetail()"><i class="fas fa-times"></i> 关闭</button>
                             </h3>
                             <div id="auditDetailContent" style="margin-top:20px;flex:1;min-height:0;display:flex;flex-direction:column;"></div>
                         </div>
@@ -228,7 +228,7 @@
                     </div>
                     <div class="table-scroll">
 <table class="result-table">
-                        <thead><tr><th>#</th><th>用户名</th><th>角色</th><th>备注</th><th>操作</th></tr></thead>
+                        <thead><tr><th class="col-seq">序号</th><th>用户名</th><th>角色</th><th>备注</th><th>操作</th></tr></thead>
                         <tbody id="usersTbody"><tr><td colspan="5" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
                     </table>
 </div>
@@ -355,7 +355,7 @@ async function loadInterfaces() {
         const path = escHtml(i.path);
         const ts = fmtTs(i.updated_at);
         return `<tr>
-            <td>${idx + 1}</td>
+            <td class="col-seq">${idx + 1}</td>
             <td>${name}</td>
             <td><span class="path-mono">${path}</span></td>
             <td>${ts}</td>
@@ -434,14 +434,21 @@ function renderTasksPage(list) {
         const title = t.title || '-';
         const titleDisplay = title.length > 20 ? escHtml(title.substring(0, 20)) + '...' : escHtml(title);
         return `<tr class="main-row">
-            <td>${no}</td>
-            <td class="col-title"><span title="${escHtml(title)}" onclick="toggleRowDetail('${rid}')" style="cursor:pointer;color:#4b6cb7;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:4px;">${titleDisplay}</span><div class="row-sub" id="${rid}" style="display:none;font-size:0.78rem;color:#666;padding-top:4px;"><span class="audit-info-label">Task:</span> <code>${taskId.substring(0, 18)}...</code> <span class="audit-info-label" style="margin-left:8px;">LinkID:</span> <code>${escHtml(t.linkid || '-')}</code></div></td>
+            <td class="col-seq">${no}</td>
+            <td class="col-title"><span title="${escHtml(title)}" onclick="toggleRowDetail('${rid}')" style="cursor:pointer;color:#4b6cb7;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:4px;">${titleDisplay}</span></td>
             <td><span class="path-mono">${escHtml(t.path || '-')}</span></td>
             <td>${statusText(t.status)}</td>
             <td>${fmtTs(t.created_at)}</td>
             <td>${fmtTs(t.finished_at)}</td>
             <td class="col-action"><button class="cfg-btn-sm cfg-btn-icon" onclick="viewStream('${taskId}')" title="执行过程"><i class="fas fa-comments"></i></button></td>
             <td class="col-action"><button class="cfg-btn-sm cfg-btn-icon" onclick="viewTask('${taskId}')" title="执行结果"><i class="fas fa-clipboard-check"></i></button></td>
+        </tr>
+        <tr class="row-detail" id="${rid}" style="display:none;">
+            <td colspan="8" style="padding:4px 12px 8px;font-size:0.82rem;color:#555;user-select:text;">
+                <span class="audit-info-label">Task ID:</span> <code style="font-size:0.82rem;">${taskId}</code>
+                &nbsp;&nbsp;&nbsp;
+                <span class="audit-info-label">LinkID:</span> <code style="font-size:0.82rem;">${escHtml(t.linkid || '-')}</code>
+            </td>
         </tr>`;
     }).join('');
     document.getElementById('tasksPager').innerHTML = pagerHtml(_tasksPage, totalPages, 'loadTasks');
@@ -462,6 +469,7 @@ function taskDetailHtml(t) {
     let step = 0;
     return `
         <table class="kv-table">
+            <tr><td class="kv-key">标题</td><td>${escHtml(t.title || '-')}</td></tr>
             <tr><td class="kv-key">Task ID</td><td style="font-family:monospace;">${escHtml(t.task_id)}</td></tr>
             <tr><td class="kv-key">LinkID</td><td>${escHtml(t.linkid || '-')}</td></tr>
             <tr><td class="kv-key">访问路径</td><td><span class="path-mono">${escHtml(t.path || '-')}</span></td></tr>
@@ -885,9 +893,10 @@ function closeAuditDetail() {
 const AUDIT_PAGE_SIZE = 10;
 let _auditPage = 1;
 let _auditTotal = 0;
+let _auditMode = 0;  // 0=最近, 1=搜索
 
 async function loadAudit(mode, page = 1) {
-    // mode: 0 = 最近N条, 1 = 按条件查询
+    _auditMode = mode;
     let url = API + '/audit?page=' + page + '&page_size=' + AUDIT_PAGE_SIZE;
     if (mode === 1) {
         const taskId = document.getElementById('auditTaskId').value.trim();
@@ -929,16 +938,23 @@ function renderAuditPage(list) {
         const title = t.title || '-';
         const titleDisplay = title.length > 20 ? escHtml(title.substring(0, 20)) + '...' : escHtml(title);
         return `<tr class="main-row">
-            <td>${no}</td>
-            <td class="col-title"><span title="${escHtml(title)}" onclick="toggleRowDetail('${rid}')" style="cursor:pointer;color:#4b6cb7;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:4px;">${titleDisplay}</span><div class="row-sub" id="${rid}" style="display:none;font-size:0.78rem;color:#666;padding-top:4px;"><span class="audit-info-label">Task:</span> <code>${taskId.substring(0, 18)}...</code> <span class="audit-info-label" style="margin-left:8px;">Link ID:</span> <code>${escHtml(t.linkid || '-')}</code></div></td>
+            <td class="col-seq">${no}</td>
+            <td class="col-title"><span title="${escHtml(title)}" onclick="toggleRowDetail('${rid}')" style="cursor:pointer;color:#4b6cb7;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:4px;">${titleDisplay}</span></td>
             <td><span class="path-mono">${escHtml(t.path || '-')}</span></td>
             <td>${statusText(t.status)}</td>
             <td>${fmtTs(t.created_at)}</td>
             <td>${fmtTs(t.finished_at)}</td>
             <td class="col-action"><button class="cfg-btn-sm cfg-btn-icon" onclick="viewAuditDetail('${taskId}')" title="详情"><i class="fas fa-history"></i></button></td>
+        </tr>
+        <tr class="row-detail" id="${rid}" style="display:none;">
+            <td colspan="7" style="padding:4px 12px 8px;font-size:0.82rem;color:#555;user-select:text;">
+                <span class="audit-info-label">Task ID:</span> <code style="font-size:0.82rem;">${taskId}</code>
+                &nbsp;&nbsp;&nbsp;
+                <span class="audit-info-label">Link ID:</span> <code style="font-size:0.82rem;">${escHtml(t.linkid || '-')}</code>
+            </td>
         </tr>`;
     }).join('');
-    document.getElementById('auditPager').innerHTML = pagerHtml(_auditPage, totalPages, 'loadAudit');
+    document.getElementById('auditPager').innerHTML = pagerHtml(_auditPage, totalPages, 'loadAudit', _auditMode);
 }
 
 function toggleRowDetail(rid) {
@@ -946,10 +962,11 @@ function toggleRowDetail(rid) {
     if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
 }
 
-function pagerHtml(page, totalPages, fnName) {
+function pagerHtml(page, totalPages, fnName, mode) {
+    const modeArg = (mode === undefined) ? '' : (mode + ',');
     return '<span style="color:#888;font-size:0.85rem;">第 ' + page + ' / ' + totalPages + ' 页</span>' +
-        '<button class="cfg-btn-sm" onclick="' + fnName + '(' + (page - 1) + ')"' + (page <= 1 ? ' disabled' : '') + '><i class="fas fa-chevron-left"></i> 上一页</button>' +
-        '<button class="cfg-btn-sm" onclick="' + fnName + '(' + (page + 1) + ')"' + (page >= totalPages ? ' disabled' : '') + '>下一页 <i class="fas fa-chevron-right"></i></button>';
+        '<button class="cfg-btn-sm" onclick="' + fnName + '(' + modeArg + (page - 1) + ')"' + (page <= 1 ? ' disabled' : '') + '><i class="fas fa-chevron-left"></i> 上一页</button>' +
+        '<button class="cfg-btn-sm" onclick="' + fnName + '(' + modeArg + (page + 1) + ')"' + (page >= totalPages ? ' disabled' : '') + '>下一页 <i class="fas fa-chevron-right"></i></button>';
 }
 
 let _auditDetailData = null;  // 当前查看的详情数据，供导出使用
@@ -975,7 +992,7 @@ function auditTimelineHtml(t) {
     let html = '<div class="audit-info-bar" style="flex-shrink:0;">' +
         '<div class="audit-info-row"><span class="audit-info-label">标题:</span> <span class="audit-info-title">' + escHtml(title) + '</span></div>' +
         '<div class="audit-info-row"><span class="audit-info-label">执行周期:</span> ' + escHtml(startStr) + ' ~ ' + escHtml(endStr) + '</div>' +
-        '<div class="audit-info-row"><span class="audit-info-label">Task ID:</span> <code>' + escHtml(t.task_id) + '</code> <span class="audit-info-label" style="margin-left:16px;">Link ID:</span> <code>' + escHtml(t.linkid || '-') + '</code></div>' +
+        '<div class="audit-info-row"><span class="audit-info-label">Task ID:</span> ' + escHtml(t.task_id) + ' <span class="audit-info-label" style="margin-left:16px;">Link ID:</span> ' + escHtml(t.linkid || '-') + '</div>' +
         '</div>';
     // 时间线 — 可滚动
     html += '<div class="audit-timeline-scroll" style="flex:1;min-height:0;">';
@@ -1021,11 +1038,15 @@ function buildAuditEvents(t) {
     if (t.request_body) {
         events.push({ time: t.created_at, type: 'input', title: '收到请求数据', detail: jsonFmt(t.request_body) });
     }
-    // 3. 渲染提示词
+    // 3. 返回同步响应
+    if (t.request_response) {
+        events.push({ time: t.created_at, type: 'output', title: '返回同步响应', detail: jsonFmt(t.request_response) });
+    }
+    // 4. 渲染提示词
     if (t.prompt) {
         events.push({ time: t.created_at, type: 'prompt', title: '渲染提示词', detail: t.prompt });
     }
-    // 4. 智能体执行过程（流式）
+    // 5. 智能体执行过程（流式）
     if (t.sdk_stream && Array.isArray(t.sdk_stream)) {
         for (const entry of t.sdk_stream) {
             const label = entry.type === 'tool' ? '调用工具 ' + (entry.tool_name || '')
@@ -1039,11 +1060,11 @@ function buildAuditEvents(t) {
             events.push({ time: entry.ts || null, type: entry.type || 'text', title: label, detail });
         }
     }
-    // 5. Agent 最终输出
+    // 6. Agent 最终输出
     if (t.sdk_output) {
         events.push({ time: t.finished_at, type: 'output', title: 'Agent 输出结果', detail: t.sdk_output });
     }
-    // 6. 回调对方 URL
+    // 7. 回调对方 URL
     if (t.callback_url) {
         events.push({
             time: t.finished_at,
@@ -1052,7 +1073,7 @@ function buildAuditEvents(t) {
             detail: 'POST ' + t.callback_url + '\n\n回调体:\n' + (t.callback_body ? jsonFmt(t.callback_body) : '(无)')
         });
     }
-    // 7. 完成 / 失败
+    // 8. 完成 / 失败
     events.push({
         time: t.finished_at,
         type: t.status === 'completed' ? 'done' : (t.status === 'failed' || t.status === 'callback_fail' ? 'error' : 'info'),
@@ -1065,62 +1086,21 @@ function buildAuditEvents(t) {
 function exportAuditMd() {
     const t = _auditDetailData;
     if (!t) return toast('无数据', 'error');
-    const events = buildAuditEvents(t);
     const linkid = t.linkid || t.task_id?.substring(0, 8) || 'export';
 
-    let items = '';
-    let step = 0;
-    for (const ev of events) {
-        step++;
-        const timeStr = ev.time ? fmtTimelineTs(ev.time) : '';
-        const detailBlock = ev.detail ? '<pre class="detail">' + escHtml(ev.detail) + '</pre>' : '';
-        items += '<div class="item ' + ev.type + '">' +
-            '<div class="dot"></div>' +
-            '<div class="body">' +
-            '<div class="ihead"><span class="time">' + escHtml(timeStr) + '</span><strong>' + step + '. ' + escHtml(ev.title) + '</strong></div>' +
-            detailBlock +
-            '</div></div>';
-    }
-
-    const html = '<!DOCTYPE html>\n<html lang="zh-CN">\n<head>\n<meta charset="UTF-8">\n' +
-        '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
-        '<title>任务时间线 — ' + escHtml(linkid) + '</title>\n' +
-        '<style>\n' +
-        '*{margin:0;padding:0;box-sizing:border-box}' +
-        'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f5f6fa;color:#333;padding:40px 20px}' +
-        '.wrap{max-width:960px;margin:0 auto;background:#fff;border-radius:12px;box-shadow:0 2px 16px rgba(0,0,0,.08);overflow:hidden}' +
-        '.page-head{padding:28px 36px;background:linear-gradient(to right,#4b6cb7,#182848);color:#fff}' +
-        '.page-head h1{font-size:1.4rem;display:flex;align-items:center;gap:10px}' +
-        '.page-head .meta{margin-top:10px;font-size:.85rem;opacity:.85;display:flex;flex-wrap:wrap;gap:16px}' +
-        '.page-head .meta span{display:inline-flex;align-items:center;gap:4px}' +
-        '.page-head .badge{display:inline-block;padding:2px 10px;border-radius:10px;font-size:.78rem;font-weight:600;background:rgba(255,255,255,.25)}' +
-        '.tl{padding:28px 36px}' +
-        '.item{display:flex;gap:14px;padding:14px 0;border-left:2px solid #e0e0e0;margin-left:8px;position:relative}' +
-        '.item:last-child{border-left-color:transparent}' +
-        '.dot{width:16px;height:16px;border-radius:50%;background:#4b6cb7;flex-shrink:0;margin-left:-9px;margin-top:2px;position:relative;z-index:1}' +
-        '.item.error .dot{background:#e53e3e}' +
-        '.body{flex:1;min-width:0}' +
-        '.ihead{display:flex;flex-wrap:wrap;align-items:center;gap:10px;font-size:.92rem}' +
-        '.time{font-family:monospace;font-size:.78rem;color:#888;white-space:nowrap}' +
-        '.detail{background:#f7f8fa;border-radius:6px;padding:12px 16px;margin-top:8px;font-size:.82rem;line-height:1.6;white-space:pre-wrap;word-break:break-word;max-height:400px;overflow:auto;border:1px solid #edf2f7}' +
-        '.foot{padding:16px 36px;border-top:1px solid #edf2f7;font-size:.78rem;color:#999;text-align:center}' +
-        '</style>\n</head>\n<body>\n<div class="wrap">\n' +
-        '<div class="page-head"><h1>&#129302; 任务时间线</h1>' +
-        '<div class="meta"><span>LinkID: ' + escHtml(linkid) + '</span>' +
-        '<span>Task ID: ' + escHtml(t.task_id?.substring(0, 18) || '-') + '...</span>' +
-        '<span>访问路径: ' + escHtml(t.path || '-') + '</span>' +
-        '<span>' + statusText(t.status) + '</span>' +
-        '<span>' + fmtTs(t.created_at) + ' ~ ' + fmtTs(t.finished_at) + '</span></div></div>\n' +
-        '<div class="tl">\n' + items + '\n</div>\n' +
-        '<div class="foot">Powered by doc_pro_agent</div>\n</div>\n</body>\n</html>';
-
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = linkid + '.html';
-    a.click();
-    URL.revokeObjectURL(a.href);
-    toast('已导出');
+    // 直接请求后端渲染的 HTML 页面，保持与 API 一致
+    fetch('/api/v1/task/log/' + encodeURIComponent(t.task_id) + '?format=html')
+        .then(r => r.text())
+        .then(html => {
+            const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = linkid + '.html';
+            a.click();
+            URL.revokeObjectURL(a.href);
+            toast('已导出');
+        })
+        .catch(err => toast('导出失败: ' + err.message));
 }
 </script>
 </body>
