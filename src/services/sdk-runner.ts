@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { getLogger } from '../logger.js';
 import { fmtLocalTs } from '../time.js';
+import { publish } from './sse-bus.js';
 import type { Config } from '../config.js';
 
 const log = getLogger();
@@ -209,6 +210,7 @@ export async function runAgent(
   renderedPrompt: string,
   cfg: Config,
   resumeSessionId?: string,
+  onSessionId?: (sessionId: string) => void,
 ): Promise<SdkResult> {
   const workDir = join(cfg.sys.data_dir, 'tasks', sanitizeDirName(linkid));
   await mkdir(workDir, { recursive: true });
@@ -250,6 +252,12 @@ export async function runAgent(
       const sid = (message as Record<string, unknown>).session_id;
       if (!capturedSessionId && typeof sid === 'string' && sid) {
         capturedSessionId = sid;
+        onSessionId?.(sid);
+      }
+
+      // 推送到 SSE 总线，让前端实时订阅
+      if (capturedSessionId) {
+        publish(capturedSessionId, message);
       }
 
       // 收集 assistant 文本输出
@@ -270,12 +278,21 @@ export async function runAgent(
     const trace = JSON.stringify(traceMessages);
     log.info({ taskId, linkid, sessionId: capturedSessionId, durationMs, outputLen: fullOutput.length, traceLen: trace.length }, 'sdk_run_complete');
 
+    // 发送结束信号，让 SSE 连接自然关闭
+    if (capturedSessionId) {
+      publish(capturedSessionId, { type: 'end' });
+    }
+
     return { success: true, rawOutput: fullOutput, trace, sessionId: capturedSessionId, durationMs };
   } catch (err) {
     const durationMs = Date.now() - start;
     const message = err instanceof Error ? err.message : String(err);
     const trace = JSON.stringify(traceMessages);
     log.error({ taskId, linkid, sessionId: capturedSessionId, durationMs, error: message, partialTraceLen: trace.length }, 'sdk_run_error');
+
+    if (capturedSessionId) {
+      publish(capturedSessionId, { type: 'end' });
+    }
     return { success: false, rawOutput: fullOutput, trace, sessionId: capturedSessionId, errorMessage: message, durationMs };
   }
 }

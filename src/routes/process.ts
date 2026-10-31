@@ -34,6 +34,11 @@ export function submitTask(interfacePath: string, body: Record<string, unknown>,
     return { status: 400, body: buildResponse(1001, '缺少 callback_url', '', '') };
   }
 
+  // 同一 linkid 有未完成的任务时拒绝，防止重复投递
+  if (taskLogsStore.hasActiveByLinkid(linkid)) {
+    return { status: 409, body: buildResponse(2003, '该公文尚有任务正在处理中，请等待完成后再次提交', '', linkid) };
+  }
+
   // 检查队列上限
   const maxPending = cfg.sys.max_pending_tasks;
   const activeCount = getRunningCount() + getPendingCount();

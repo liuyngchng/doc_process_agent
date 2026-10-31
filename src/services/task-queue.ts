@@ -55,10 +55,15 @@ async function processItem(item: WorkerItem): Promise<void> {
     log.info({ task_id, linkid, sessionId: resumeSessionId }, 'session_resume');
   }
 
-  // 调用 Claude Code Agent SDK
-  const result = await runAgent(linkid, task_id, rendered, cfg, resumeSessionId);
+  // 调用 Claude Code Agent SDK。
+  // 通过 onSessionId 回调在首条流式消息拿到 session_id 的瞬间就写入 DB，
+  // 这样任务仍在 processing 时，前端「对话」按钮就能实时看到会话。
+  const result = await runAgent(linkid, task_id, rendered, cfg, resumeSessionId, (sessionId) => {
+    sessionsStore.upsert(sessionId, linkid);
+    taskLogsStore.updateResult(task_id, { session_id: sessionId });
+  });
 
-  // ── 首条消息拿到 session_id 就立即写入 sessions 表 ──
+  // 兜底：若 onSessionId 未触发（例如异常路径），任务结束后再写一次
   if (result.sessionId) {
     sessionsStore.upsert(result.sessionId, linkid);
   }

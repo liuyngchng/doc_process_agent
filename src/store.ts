@@ -435,6 +435,13 @@ export const taskLogsStore = {
       `SELECT * FROM task_logs WHERE status IN ('pending', 'processing') ORDER BY created_at ASC`
     ).all() as TaskLog[];
   },
+  /** 检查指定 linkid 是否有 pending/processing 的任务 */
+  hasActiveByLinkid(linkid: string): boolean {
+    const row = db.prepare(
+      `SELECT 1 AS c FROM task_logs WHERE linkid = ? AND status IN ('pending', 'processing') LIMIT 1`
+    ).get(linkid);
+    return !!row;
+  },
   /**
    * 清理过期的非活跃任务记录（status 不在 pending/processing）。
    * 返回清理的任务数。

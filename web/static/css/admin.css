@@ -600,9 +600,10 @@ header p {
     gap: 8px;
 }
 
-/* “执行过程” 与 “执行结果” 窗口 — 固定高度 */
+/* “执行过程”、”执行结果”、”任务执行时间线” 窗口 — 固定高度 */
 #streamModal .modal-lg,
-#taskModal .modal-lg {
+#taskModal .modal-lg,
+#auditDetailModal .modal-lg {
     width: min(1280px, calc(100vw - 40px));
     height: 90vh;
     overflow: hidden;

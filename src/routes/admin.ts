@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { networkInterfaces } from 'node:os';
 import { getSessionMessages } from '@anthropic-ai/claude-agent-sdk';
 import { interfacesStore, taskLogsStore, configStore, usersStore, sessionsStore, hashPasswordSync } from '../store.js';
+import { subscribe, unsubscribe, sendSSE } from '../services/sse-bus.js';
 import { getLogger } from '../logger.js';
 import { nowReadable } from '../time.js';
 import { getCurrentUser, adminOnlyMiddleware, validatePasswordStrength } from './auth.js';
@@ -199,6 +200,7 @@ export function createAdminRouter(cfg: Config): Router {
 
   // ---- 会话记录（SDK 原生对话） ----
 
+  // GET 一次性拉取（兼容已结束的任务）
   router.get('/admin/sessions/:session_id/messages', async (req: Request, res: Response) => {
     const { session_id } = req.params;
     if (!session_id) {
@@ -217,6 +219,51 @@ export function createAdminRouter(cfg: Config): Router {
       log.error({ session_id, error: msg }, 'session_messages_error');
       res.status(500).json({ code: 1001, message: '读取会话记录失败: ' + msg });
     }
+  });
+
+  // SSE 实时推送（任务处理中时前端订阅）
+  router.get('/admin/sessions/:session_id/stream', async (req: Request, res: Response) => {
+    const { session_id } = req.params;
+    if (!session_id) {
+      res.status(400).json({ code: 1001, message: '缺少 session_id' });
+      return;
+    }
+
+    const session = sessionsStore.get(session_id);
+    const workDir = join(cfg.sys.data_dir, 'tasks', sanitizeLinkid(session?.linkid || ''));
+
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no', // 禁用 nginx 缓冲
+    });
+
+    // 先推全量快照，前端据此渲染已有历史
+    try {
+      const messages = await getSessionMessages(session_id, { dir: workDir, includeSystemMessages: false });
+      sendSSE(res, { type: 'snapshot', messages });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      sendSSE(res, { type: 'error', message: msg });
+    }
+
+    const onMessage = (msg: unknown) => {
+      // 任务结束信号：通知前端后关闭连接
+      const m = msg as Record<string, unknown>;
+      sendSSE(res, msg);
+      if (m.type === 'end') {
+        unsubscribe(session_id, onMessage);
+        res.end();
+      }
+    };
+
+    subscribe(session_id, onMessage);
+
+    // 连接断开时清理
+    req.on('close', () => {
+      unsubscribe(session_id, onMessage);
+    });
   });
 
   // ============================================================

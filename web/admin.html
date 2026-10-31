@@ -103,8 +103,8 @@
                 <h2><i class="fas fa-list-alt"></i> 任务监控</h2>
                 <div class="table-scroll">
 <table class="result-table">
-                    <thead><tr><th class="col-seq">序号</th><th class="col-title">标题</th><th>访问路径</th><th>LinkID</th><th>Session</th><th>状态</th><th class="col-date">创建时间</th><th class="col-date">完成时间</th><th class="col-action">对话</th></tr></thead>
-                    <tbody id="tasksTbody"><tr><td colspan="9" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
+                    <thead><tr><th class="col-seq">序号</th><th class="col-title">标题</th><th>访问路径</th><th>LinkID</th><th>状态</th><th class="col-date">创建时间</th><th class="col-date">完成时间</th><th class="col-action">对话</th></tr></thead>
+                    <tbody id="tasksTbody"><tr><td colspan="8" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
                 </table>
 </div>
                 <div id="tasksPager" class="pager" style="margin-top:16px;display:flex;align-items:center;justify-content:center;gap:12px;"></div>
@@ -427,7 +427,7 @@ function renderTasksPage(list) {
     const totalPages = Math.max(1, Math.ceil(total / TASKS_PAGE_SIZE));
     const tbody = document.getElementById('tasksTbody');
     if (total === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;padding:24px;">暂无任务</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;padding:24px;">暂无任务</td></tr>';
         document.getElementById('tasksPager').innerHTML = '';
         return;
     }
@@ -443,14 +443,13 @@ function renderTasksPage(list) {
             <td class="col-title"><span title="${escHtml(title)}" onclick="toggleRowDetail('${rid}')" style="cursor:pointer;color:#4b6cb7;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:4px;">${titleDisplay}</span></td>
             <td>${escHtml(t.path || '-')}</td>
             <td><code style="font-size:0.78rem;">${escHtml((t.linkid || '-').substring(0,8))}...</code></td>
-            <td><code style="font-size:0.78rem;">${escHtml((t.session_id || '-').substring(0,8))}...</code></td>
             <td>${statusText(t.status)}</td>
             <td class="col-date">${fmtTs(t.created_at)}</td>
             <td class="col-date">${fmtTs(t.finished_at)}</td>
-            <td class="col-action"><button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-primary" onclick="viewSession('${escHtml(t.session_id || '')}', '${taskId}')" title="会话记录"><i class="fas fa-comments"></i></button></td>
+            <td class="col-action"><button class="cfg-btn-sm cfg-btn-icon cfg-btn-icon-primary" onclick="viewSession('${escHtml(t.session_id || '')}', '${taskId}', '${escHtml(t.status || '')}')" title="会话记录"><i class="fas fa-comments"></i></button></td>
         </tr>
         <tr class="row-detail" id="${rid}" style="display:none;">
-            <td colspan="9" style="padding:4px 12px 8px;font-size:0.82rem;color:#555;user-select:text;">
+            <td colspan="8" style="padding:4px 12px 8px;font-size:0.82rem;color:#555;user-select:text;">
                 <span class="audit-info-label">Task ID:</span> ${taskId}
                 &nbsp;&nbsp;&nbsp;
                 <span class="audit-info-label">LinkID:</span> ${escHtml(t.linkid || '-')}
@@ -923,50 +922,146 @@ function renderAuditPage(list) {
 }
 
 function closeStreamModal() {
+    if (_streamEs) { _streamEs.close(); _streamEs = null; }
+    _streamSessionId = null;
+    _streamCount = 0;
     document.getElementById('streamModal').classList.remove('show');
 }
 
-async function viewSession(sessionId, taskId) {
-    if (!sessionId) return toast('该任务无关联 Session', 'error');
-    try {
-        const res = await fetch(API + '/sessions/' + encodeURIComponent(sessionId) + '/messages');
-        const json = await res.json();
-        const data = json.data || {};
-        const messages = Array.isArray(data.messages) ? data.messages : [];
-        document.getElementById('streamModalTitle').innerHTML = '<i class="fas fa-comments"></i> 会话记录 <span style="font-weight:400;font-size:0.8rem;color:#888;">' + escHtml(sessionId.substring(0,8)) + '...</span>';
-        document.getElementById('streamStatus').innerHTML = '<span style="color:#4b6cb7;">共 ' + messages.length + ' 条消息</span>';
-        document.getElementById('streamStatus').className = 'stream-status-bar stream-status-done';
+// ---- 会话记录实时推送（SSE）----
+let _streamEs = null;         // EventSource 实例
+let _streamSessionId = null;
+let _streamCount = 0;         // 已渲染消息条数
 
-        let output = '';
-        for (const msg of messages) {
-            if (msg.type === 'user') {
-                output += '\n' + '='.repeat(60) + '\n[\u7528\u6237]\n';
-                const c = msg.message?.content;
-                if (typeof c === 'string') output += c.substring(0, 500) + (c.length > 500 ? '...(截断)' : '');
-                else if (Array.isArray(c)) {
-                    for (const b of c) {
-                        if (b.type === 'text' && b.text) output += b.text.substring(0, 500) + (b.text.length > 500 ? '...(截断)' : '');
-                        else if (b.type === 'tool_result') output += '[工具返回]\n';
+function formatSessionMessages(messages, startSeq) {
+    let output = '';
+    let seq = startSeq;
+    for (const msg of messages) {
+        seq++;
+        const ts = msg.message?.timestamp || msg.timestamp || '';
+        const tsStr = ts ? fmtTimelineTs(ts) : '';
+        if (msg.type === 'user') {
+            output += '\n' + '='.repeat(60) + '\n[' + seq + '] ' + tsStr + ' [用户]\n';
+            const c = msg.message?.content;
+            if (typeof c === 'string') {
+                output += c + '\n';
+            } else if (Array.isArray(c)) {
+                for (const b of c) {
+                    if (b.type === 'text' && b.text) {
+                        output += b.text + '\n';
+                    } else if (b.type === 'tool_result') {
+                        output += '┌─ [工具返回]';
+                        if (b.tool_use_id) output += '  (' + b.tool_use_id + ')';
+                        output += '\n';
+                        if (b.content) {
+                            if (typeof b.content === 'string') {
+                                output += '│ ' + b.content.replace(/\n/g, '\n│ ') + '\n';
+                            } else if (Array.isArray(b.content)) {
+                                for (const cb of b.content) {
+                                    if (cb.type === 'text' && cb.text) output += '│ ' + cb.text.replace(/\n/g, '\n│ ') + '\n';
+                                }
+                            }
+                        }
+                        output += '└─\n';
                     }
                 }
-                output += '\n';
-            } else if (msg.type === 'assistant') {
-                output += '\n' + '-'.repeat(60) + '\n[\u52A9\u624B]\n';
-                const c = msg.message?.content;
-                if (Array.isArray(c)) {
-                    for (const b of c) {
-                        if (b.type === 'text' && b.text) output += b.text.substring(0, 400) + (b.text.length > 400 ? '...(截断)' : '');
-                        else if (b.type === 'tool_use') output += '>> 工具: ' + (b.name || '?') + '\n';
+            }
+        } else if (msg.type === 'assistant') {
+            output += '\n' + '-'.repeat(60) + '\n[' + seq + '] ' + tsStr + ' [助手]\n';
+            const c = msg.message?.content;
+            if (typeof c === 'string') {
+                output += c + '\n';
+            } else if (Array.isArray(c)) {
+                for (const b of c) {
+                    if (b.type === 'text' && b.text) {
+                        output += b.text + '\n';
+                    } else if (b.type === 'tool_use') {
+                        output += '┌─ >> 工具调用: ' + (b.name || '?');
+                        if (b.id) output += '  (' + b.id + ')';
+                        output += '\n';
+                        if (b.input) {
+                            output += '│ ' + JSON.stringify(b.input, null, 2).replace(/\n/g, '\n│ ') + '\n';
+                        }
+                        output += '└─\n';
                     }
                 }
-                output += '\n';
             }
         }
-        document.getElementById('streamMessages').textContent = output || '(空会话)';
-        document.getElementById('streamModal').classList.add('show');
-    } catch (err) {
-        toast('读取会话记录失败: ' + err.message, 'error');
     }
+    return { output, endSeq: seq };
+}
+
+async function viewSession(sessionId, taskId, taskStatus) {
+    if (!sessionId) return toast('该任务无关联 Session', 'error');
+
+    // 关闭上一次的 SSE 连接
+    if (_streamEs) { _streamEs.close(); _streamEs = null; }
+    _streamSessionId = sessionId;
+    _streamCount = 0;
+
+    document.getElementById('streamModalTitle').innerHTML = '<i class="fas fa-comments"></i> 会话记录 <span style="font-weight:400;font-size:0.8rem;color:#888;">' + escHtml(sessionId) + '</span>';
+    document.getElementById('streamStatus').innerHTML = '<span style="color:#4b6cb7;">加载中...</span>';
+    document.getElementById('streamStatus').className = 'stream-status-bar';
+
+    const container = document.getElementById('streamMessages');
+    container.textContent = '加载中...';
+    document.getElementById('streamModal').classList.add('show');
+
+    const active = ['pending', 'processing'].includes(taskStatus);
+
+    if (!active) {
+        // 任务已结束：一次性拉取完整历史
+        try {
+            const res = await fetch(API + '/sessions/' + encodeURIComponent(sessionId) + '/messages');
+            const json = await res.json();
+            const data = json.data || {};
+            const messages = Array.isArray(data.messages) ? data.messages : [];
+            const { output } = formatSessionMessages(messages, 0);
+            container.textContent = output || '(空会话)';
+            _streamCount = messages.length;
+            document.getElementById('streamStatus').innerHTML = '<span style="color:#4b6cb7;">共 ' + messages.length + ' 条消息</span>';
+            document.getElementById('streamStatus').className = 'stream-status-bar stream-status-done';
+        } catch (err) {
+            container.textContent = '读取会话记录失败: ' + err.message;
+        }
+        return;
+    }
+
+    // 任务处理中：订阅 SSE，实时接收快照 + 增量消息
+    const es = new EventSource(API + '/sessions/' + encodeURIComponent(sessionId) + '/stream');
+    _streamEs = es;
+
+    es.onmessage = (e) => {
+        let msg;
+        try { msg = JSON.parse(e.data); } catch { return; }
+
+        // 快照：全量历史
+        if (msg.type === 'snapshot') {
+            const messages = Array.isArray(msg.messages) ? msg.messages : [];
+            const { output } = formatSessionMessages(messages, 0);
+            container.textContent = output || '(空会话)';
+            _streamCount = messages.length;
+            document.getElementById('streamStatus').innerHTML = '<span style="color:#4b6cb7;">共 ' + messages.length + ' 条消息</span>';
+            document.getElementById('streamStatus').className = 'stream-status-bar stream-status-done';
+            container.scrollTop = container.scrollHeight;
+        } else if (msg.type === 'error') {
+            container.textContent = '读取会话记录失败: ' + (msg.message || '');
+        } else {
+            // 增量单条消息（SDK 原生消息）
+            const { output } = formatSessionMessages([msg], _streamCount);
+            container.textContent += output;
+            _streamCount++;
+            document.getElementById('streamStatus').innerHTML = '<span style="color:#4b6cb7;">共 ' + _streamCount + ' 条消息</span>';
+            container.scrollTop = container.scrollHeight;
+        }
+    };
+
+    es.onerror = () => {
+        // SSE 连接错误（如任务已结束导致服务端关闭连接），保持已显示内容
+        if (_streamEs === es) {
+            _streamEs = null;
+        }
+    };
 }
 
 function toggleRowDetail(rid) {
