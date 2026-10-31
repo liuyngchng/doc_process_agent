@@ -457,6 +457,12 @@ function renderTasksPage(list) {
             </td>
         </tr>`;
     }).join('');
+    // 不满 10 行时补空行，保持分页栏位置固定（多补一行作为缓冲）
+    if (list.length < TASKS_PAGE_SIZE) {
+        for (let i = list.length; i <= TASKS_PAGE_SIZE; i++) {
+            tbody.innerHTML += '<tr style="visibility:hidden;"><td class="col-seq">&nbsp;</td><td class="col-title">&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td class="col-date">&nbsp;</td><td class="col-date">&nbsp;</td><td class="col-action">&nbsp;</td></tr>';
+        }
+    }
     document.getElementById('tasksPager').innerHTML = pagerHtml(_tasksPage, totalPages, 'loadTasks');
 }
 
@@ -919,6 +925,12 @@ function renderAuditPage(list) {
             </td>
         </tr>`;
     }).join('');
+    // 不满 10 行时补空行，保持分页栏位置固定（多补一行作为缓冲）
+    if (list.length < AUDIT_PAGE_SIZE) {
+        for (let i = list.length; i <= AUDIT_PAGE_SIZE; i++) {
+            tbody.innerHTML += '<tr style="visibility:hidden;"><td class="col-seq">&nbsp;</td><td class="col-title">&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td class="col-date">&nbsp;</td><td class="col-action">&nbsp;</td></tr>';
+        }
+    }
     document.getElementById('auditPager').innerHTML = pagerHtml(_auditPage, totalPages, 'loadAudit', _auditMode);
 }
 
