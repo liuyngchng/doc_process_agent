@@ -130,9 +130,9 @@ function seedDefaults(db: Database.Database) {
       'INSERT INTO agent_interfaces (id, name, path, prompt, created_at, updated_at, created_ts, updated_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     );
 
-    insert.run(uuid(), '收文分类', 'document/classify', defaultClassifyPrompt(), now, now, ts, ts);
-    insert.run(uuid(), '流转目标识别', 'document/route', defaultRoutePrompt(), now, now, ts, ts);
-    insert.run(uuid(), '发文审核', 'document/dispatch-review', defaultDispatchReviewPrompt(), now, now, ts, ts);
+    insert.run(uuid(), '收文分类', 'doc/classify', defaultClassifyPrompt(), now, now, ts, ts);
+    insert.run(uuid(), '流转目标识别', 'doc/route', defaultRoutePrompt(), now, now, ts, ts);
+    insert.run(uuid(), '发文审核', 'doc/review', defaultDispatchReviewPrompt(), now, now, ts, ts);
   }
 
   // 初始化默认 admin 用户（密码 admin/admin，首次登录必须改密）
