@@ -2,7 +2,8 @@ import { Router, Request, Response } from 'express';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { networkInterfaces } from 'node:os';
-import { interfacesStore, taskLogsStore, configStore, usersStore, hashPasswordSync } from '../store.js';
+import { getSessionMessages } from '@anthropic-ai/claude-agent-sdk';
+import { interfacesStore, taskLogsStore, configStore, usersStore, sessionsStore, hashPasswordSync } from '../store.js';
 import { getLogger } from '../logger.js';
 import { nowReadable } from '../time.js';
 import { getCurrentUser, adminOnlyMiddleware, validatePasswordStrength } from './auth.js';
@@ -168,6 +169,7 @@ export function createAdminRouter(cfg: Config): Router {
       items: items.map((t) => ({
         task_id: t.task_id,
         linkid: t.linkid,
+        session_id: t.session_id,
         title: extractTitle(t.request_body),
         path: t.path,
         status: t.status,
@@ -192,19 +194,29 @@ export function createAdminRouter(cfg: Config): Router {
       request_response: safeParse(task.request_response),
       callback_body: safeParse(task.callback_body),
       callback_response: safeParse(task.callback_response),
-      sdk_trace: safeParse(task.sdk_trace),
-      sdk_stream: safeParse(task.sdk_stream),
     }});
   });
 
-  router.get('/admin/tasks/:task_id/stream', (req: Request, res: Response) => {
-    const task = taskLogsStore.get(req.params.task_id);
-    if (!task) {
-      res.status(404).json({ code: 1001, message: '任务不存在' });
+  // ---- 会话记录（SDK 原生对话） ----
+
+  router.get('/admin/sessions/:session_id/messages', async (req: Request, res: Response) => {
+    const { session_id } = req.params;
+    if (!session_id) {
+      res.status(400).json({ code: 1001, message: '缺少 session_id' });
       return;
     }
-    const stream = taskLogsStore.getStream(req.params.task_id);
-    res.json({ code: 0, data: { status: task.status, stream } });
+
+    const session = sessionsStore.get(session_id);
+    const workDir = join(cfg.sys.data_dir, 'tasks', sanitizeLinkid(session?.linkid || ''));
+
+    try {
+      const messages = await getSessionMessages(session_id, { dir: workDir, includeSystemMessages: false });
+      res.json({ code: 0, data: { session_id, messages } });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.error({ session_id, error: msg }, 'session_messages_error');
+      res.status(500).json({ code: 1001, message: '读取会话记录失败: ' + msg });
+    }
   });
 
   // ============================================================
@@ -228,6 +240,7 @@ export function createAdminRouter(cfg: Config): Router {
         items: items.map((t) => ({
           task_id: t.task_id,
           linkid: t.linkid,
+          session_id: t.session_id,
           title: extractTitle(t.request_body),
           path: t.path,
           status: t.status,
@@ -249,6 +262,7 @@ export function createAdminRouter(cfg: Config): Router {
       data: {
         task_id: task.task_id,
         linkid: task.linkid,
+        session_id: task.session_id,
         title: extractTitle(task.request_body),
         path: task.path,
         status: task.status,
@@ -260,8 +274,6 @@ export function createAdminRouter(cfg: Config): Router {
         request_response: safeParse(task.request_response),
         prompt: task.prompt,
         sdk_output: task.sdk_output,
-        sdk_trace: safeParse(task.sdk_trace),
-        sdk_stream: safeParse(task.sdk_stream),
         callback_body: safeParse(task.callback_body),
         callback_response: safeParse(task.callback_response),
       },
@@ -373,6 +385,10 @@ export function createAdminRouter(cfg: Config): Router {
   });
 
   return router;
+}
+
+function sanitizeLinkid(linkid: string): string {
+  return linkid.replace(/[/\\:*?"<>|]/g, '_');
 }
 
 function safeParse(s: string | null): unknown {

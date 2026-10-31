@@ -2,10 +2,12 @@
  * 异步任务队列
  *
  * 基于 Promise 的轻量内存队列，配合 SQLite 持久化状态。
+ * - 按 linkid 串行化：同一公文的多次提交排队顺序执行，保证 session 不冲突。
+ * - 不同 linkid 之间仍可并发（受 max_concurrent_tasks 限制）。
  */
 import { v4 as uuid } from 'uuid';
 import { getLogger } from '../logger.js';
-import { taskLogsStore, interfacesStore } from '../store.js';
+import { taskLogsStore, interfacesStore, sessionsStore } from '../store.js';
 import { renderPrompt } from './prompt-engine.js';
 import { runAgent } from './sdk-runner.js';
 import { deliverCallback } from './callback.js';
@@ -15,66 +17,78 @@ import type { AgentInterface, ProcessRequest, TaskLog, TaskStatus } from '../typ
 
 const log = getLogger();
 
-type WorkerFn = (item: { task_id: string; path: string; iface: AgentInterface; body: ProcessRequest }) => Promise<void>;
+type WorkerItem = {
+  task_id: string;
+  path: string;
+  iface: AgentInterface;
+  body: ProcessRequest;
+};
 
 let cfg: Config;
-let worker: WorkerFn;
 let running = 0;
-const pending: Array<{ task_id: string; path: string; iface: AgentInterface; body: ProcessRequest }> = [];
+const pending: WorkerItem[] = [];
+
+// ── per-linkid 串行化 ──
+const linkChains = new Map<string, Promise<void>>();
 
 function nowLocal(): string {
   return nowReadable();
 }
 
-async function processItem(item: {
-  task_id: string;
-  path: string;
-  iface: AgentInterface;
-  body: ProcessRequest;
-}): Promise<void> {
+async function processItem(item: WorkerItem): Promise<void> {
   const { task_id, path: interfacePath, iface, body } = item;
+  const linkid = body.linkid;
 
   // 状态 → processing
   taskLogsStore.updateStatus(task_id, 'processing');
-  log.info({ task_id, linkid: body.linkid, path: interfacePath }, 'task_processing');
+  log.info({ task_id, linkid, path: interfacePath }, 'task_processing');
 
   // 渲染提示词
   const rendered = renderPrompt(iface.prompt, body as unknown as Record<string, unknown>);
   taskLogsStore.updateResult(task_id, { prompt: rendered });
 
+  // 查 sessions 表：同一 linkid 是否有已存在的 session
+  const existingSession = sessionsStore.getByLinkid(linkid);
+  const resumeSessionId = existingSession?.session_id;
+
+  if (resumeSessionId) {
+    log.info({ task_id, linkid, sessionId: resumeSessionId }, 'session_resume');
+  }
+
   // 调用 Claude Code Agent SDK
-  const result = await runAgent(task_id, rendered, cfg, (entries) => {
-    taskLogsStore.appendStream(task_id, entries);
-  });
+  const result = await runAgent(linkid, task_id, rendered, cfg, resumeSessionId);
+
+  // ── 首条消息拿到 session_id 就立即写入 sessions 表 ──
+  if (result.sessionId) {
+    sessionsStore.upsert(result.sessionId, linkid);
+  }
 
   if (!result.success) {
     // LLM 调用本身失败
     const errMsg = result.errorMessage || 'Claude 处理失败';
     taskLogsStore.updateResult(task_id, {
       status: 'failed' as TaskStatus,
+      session_id: result.sessionId || null,
       sdk_output: result.rawOutput,
-      sdk_trace: result.trace,
       error_message: errMsg,
       finished_at: nowLocal(),
     });
 
     const failPayload = buildResponse(5000, errMsg, task_id, body.linkid, null);
-    const cbResult = await deliverCallback(body.callback_url, failPayload, cfg, (entries) => {
-      taskLogsStore.appendStream(task_id, entries);
-    });
+    const cbResult = await deliverCallback(body.callback_url, failPayload, cfg);
     taskLogsStore.updateResult(task_id, {
       status: 'failed' as TaskStatus,
       callback_body: cbResult.body,
       callback_response: cbResult.responseBody,
     });
-    log.error({ task_id, error: errMsg }, 'task_failed');
+    log.error({ task_id, linkid, error: errMsg }, 'task_failed');
     return;
   }
 
   // LLM 成功 — 暂不修改 status，等回调完成再统一设
   taskLogsStore.updateResult(task_id, {
+    session_id: result.sessionId || null,
     sdk_output: result.rawOutput,
-    sdk_trace: result.trace,
   });
 
   // 尝试解析 Claude 输出的 JSON
@@ -88,9 +102,7 @@ async function processItem(item: {
 
   // 回调
   const successPayload = buildResponse(0, 'success', task_id, body.linkid, parsedData);
-  const cbResult = await deliverCallback(body.callback_url, successPayload, cfg, (entries) => {
-    taskLogsStore.appendStream(task_id, entries);
-  });
+  const cbResult = await deliverCallback(body.callback_url, successPayload, cfg);
 
   const finalStatus: TaskStatus = cbResult.success ? 'completed' : 'callback_fail';
   taskLogsStore.updateResult(task_id, {
@@ -101,7 +113,7 @@ async function processItem(item: {
     ...(cbResult.errorMsg ? { error_message: cbResult.errorMsg } : {}),
   });
 
-  log.info({ task_id, status: finalStatus }, 'task_done');
+  log.info({ task_id, linkid, status: finalStatus }, 'task_done');
 }
 
 async function pump(): Promise<void> {
@@ -109,26 +121,34 @@ async function pump(): Promise<void> {
   const maxPending = cfg.sys.max_pending_tasks;
   while (running < maxConcurrent && pending.length > 0) {
     const item = pending.shift()!;
-    // 检查是否超过总上限
     if (running >= maxPending) {
-      pending.unshift(item); // 放回去
+      pending.unshift(item);
       break;
     }
     running++;
-    // fire and forget — 不阻塞后续任务入队
-    processItem(item).finally(() => {
-      running--;
-      // 队列中还有任务且有空位，继续消费
-      if (pending.length > 0 && running < maxConcurrent) {
-        pump().catch(() => {});
-      }
-    });
+
+    // per-linkid 串行化：挂到该 linkid 的 Promise 链后面
+    const prev = linkChains.get(item.body.linkid) ?? Promise.resolve();
+    const next = prev
+      .then(() => processItem(item))
+      .catch(() => { /* processItem 内部已 catch，不抛到外层 */ })
+      .finally(() => {
+        running--;
+        // 链头是自己时才清除
+        if (linkChains.get(item.body.linkid) === next) {
+          linkChains.delete(item.body.linkid);
+        }
+        // 队列中还有任务且有空位，继续消费
+        if (pending.length > 0 && running < maxConcurrent) {
+          pump().catch(() => {});
+        }
+      });
+    linkChains.set(item.body.linkid, next);
   }
 }
 
 export function initTaskQueue(c: Config): void {
   cfg = c;
-  worker = processItem;
   recoverOrphanedTasks();
 }
 
@@ -142,10 +162,8 @@ function recoverOrphanedTasks(): void {
 
   for (const task of active) {
     if (task.status === 'pending') {
-      // 排队中 → 重新入队
       const iface = interfacesStore.get(task.interface_id || '');
       if (!iface) {
-        // 找不到接口定义，标记失败
         taskLogsStore.updateResult(task.task_id, {
           status: 'failed' as TaskStatus,
           error_message: '服务重启：关联的接口模板已被删除',
@@ -162,7 +180,6 @@ function recoverOrphanedTasks(): void {
       pending.push({ task_id: task.task_id, path: task.path, iface, body });
       resumed++;
     } else if (task.status === 'processing') {
-      // 处理中 → 进程已死，标记失败
       taskLogsStore.updateResult(task.task_id, {
         status: 'failed' as TaskStatus,
         error_message: '服务重启：任务被中断（原进程已退出）',
@@ -175,7 +192,6 @@ function recoverOrphanedTasks(): void {
 
   log.info({ resumed, killed }, 'task_queue_recovered');
 
-  // 恢复后立刻触发消费
   if (pending.length > 0) pump().catch(() => {});
 }
 
@@ -183,10 +199,10 @@ export function enqueue(iface: AgentInterface, body: ProcessRequest): { task_id:
   const taskId = uuid();
   const now = nowLocal();
 
-  // 持久化
   const logEntry: TaskLog = {
     task_id: taskId,
     linkid: body.linkid,
+    session_id: null,
     path: iface.path,
     interface_id: iface.id,
     status: 'pending',
@@ -194,8 +210,6 @@ export function enqueue(iface: AgentInterface, body: ProcessRequest): { task_id:
     request_response: null,
     prompt: '',
     sdk_output: null,
-    sdk_trace: null,
-    sdk_stream: null,
     callback_body: null,
     callback_response: null,
     callback_url: body.callback_url,
@@ -207,10 +221,7 @@ export function enqueue(iface: AgentInterface, body: ProcessRequest): { task_id:
   };
   taskLogsStore.create(logEntry);
 
-  // 入队
   pending.push({ task_id: taskId, path: iface.path, iface, body });
-
-  // 触发消费
   pump().catch(() => {});
 
   return { task_id: taskId };
@@ -230,15 +241,12 @@ export function getPendingCount(): number {
 
 /** 从 Claude 输出中提取 JSON 对象 */
 function extractJson(text: string): unknown {
-  // 尝试提取 ```json 代码块
   const jsonBlock = text.match(/```json\s*([\s\S]*?)```/);
   if (jsonBlock) return JSON.parse(jsonBlock[1].trim());
 
-  // 尝试提取 ``` 代码块（无语言标注）
   const codeBlock = text.match(/```\s*([\s\S]*?)```/);
   if (codeBlock) return JSON.parse(codeBlock[1].trim());
 
-  // 尝试直接解析整个文本
   return JSON.parse(text.trim());
 }
 

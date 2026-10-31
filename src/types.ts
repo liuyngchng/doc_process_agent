@@ -29,15 +29,14 @@ export type TaskStatus =
 export interface TaskLog {
   task_id: string;
   linkid: string;
+  session_id: string | null;   // 关联的 Claude Agent SDK session（resume 用）
   path: string;
   interface_id: string | null;
   status: TaskStatus;
   request_body: string;
   request_response: string | null;   // 我方对请求的同步响应
   prompt: string;
-  sdk_output: string | null;
-  sdk_trace: string | null;
-  sdk_stream: string | null;
+  sdk_output: string | null;         // Agent 最终输出（业务产出，回调 data）
   callback_body: string | null;
   callback_response: string | null;  // 对方对回调的响应
   callback_url: string;
@@ -48,15 +47,19 @@ export interface TaskLog {
   finished_ts: number | null;
 }
 
-/** SDK 流式输出中的一条可读记录，实时追加到 DB */
-export interface StreamEntry {
-  ts: string;          // YYYY-MM-DD HH:MM:ss.SSS
-  type: 'text' | 'tool' | 'tool_result' | 'system' | 'error';
-  text: string;        // 人类可读摘要
-  // tool 相关附加字段
-  tool_name?: string;
-  tool_input?: string; // JSON-stringified tool input
-  tool_output?: string; // tool result summary (truncated)
+// ============================================================
+// Session（公文 ↔ Claude Agent SDK 会话映射）
+// ============================================================
+export type SessionStatus = 'active' | 'closed';
+
+export interface Session {
+  session_id: string;
+  linkid: string;
+  status: SessionStatus;
+  created_at: string;
+  updated_at: string;
+  created_ts: number | null;
+  updated_ts: number | null;
 }
 
 // ============================================================

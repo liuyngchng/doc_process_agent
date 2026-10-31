@@ -5,7 +5,7 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import { loadConfig, ensureDirs } from './config.js';
 import { initLogger, getLogger } from './logger.js';
-import { initStore, taskLogsStore, configStore } from './store.js';
+import { initStore, taskLogsStore, configStore, sessionsStore } from './store.js';
 import { nowReadable } from './time.js';
 import { initTaskQueue } from './services/task-queue.js';
 import { createProcessRouter } from './routes/process.js';
@@ -148,28 +148,45 @@ const keyFile = cfg.server.key_file;
 log.info({ port, certFile: certFile || '(none)' }, 'binding_port');
 
 // ---- 定期清理过期任务数据 ----
-function cleanupExpiredTasks() {
+async function cleanupExpiredTasks() {
   const retentionDays = cfg.sys.retention_days;
   try {
     const deleted = taskLogsStore.deleteExpired(retentionDays);
-    // 清理已删除任务对应的磁盘工作目录
-    const remainingIds = new Set(taskLogsStore.listTaskIds());
+
+    // 清理过期 session（超过 retentionDays 未见新提交）
+    const expiredSessions = sessionsStore.deleteExpired(retentionDays);
+    if (expiredSessions.length > 0) {
+      log.info({ expiredCount: expiredSessions.length, retentionDays }, 'session_cleanup_start');
+      const { deleteSession } = await import('@anthropic-ai/claude-agent-sdk');
+      for (const s of expiredSessions) {
+        try {
+          await deleteSession(s.session_id);
+        } catch (err) {
+          log.warn({ sessionId: s.session_id, error: String(err) }, 'session_delete_sdk_error');
+        }
+      }
+    }
+
+    // 清理过期 session 对应的磁盘工作目录
     const tasksDir = join(cfg.sys.data_dir, 'tasks');
     if (existsSync(tasksDir)) {
+      const { getDb } = await import('./store.js');
+      const activeSessions = getDb().prepare('SELECT linkid FROM sessions').all() as Array<{ linkid: string }>;
+      const activeSet = new Set(activeSessions.map(r => r.linkid.replace(/[/\\:*?"<>|]/g, '_')));
       for (const dir of readdirSync(tasksDir)) {
-        if (!remainingIds.has(dir)) {
+        if (!activeSet.has(dir)) {
           rmSync(join(tasksDir, dir), { recursive: true, force: true });
         }
       }
     }
-    log.info({ retentionDays, deletedRows: deleted }, 'cleanup_done');
+    log.info({ retentionDays, deletedRows: deleted, expiredSessions: expiredSessions.length }, 'cleanup_done');
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log.error({ error: msg }, 'cleanup_error');
   }
 }
 
-// 启动时立即清理一次，之后每小时清理一次
+// 启动时立即清理一次，之后每日清理一次
 const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 setTimeout(cleanupExpiredTasks, 10 * 1000);
 setInterval(cleanupExpiredTasks, CLEANUP_INTERVAL_MS);

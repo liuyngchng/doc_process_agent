@@ -8,16 +8,10 @@ import http from 'node:http';
 import https from 'node:https';
 import { URL } from 'node:url';
 import { getLogger } from '../logger.js';
-import { fmtLocalTs } from '../time.js';
 import type { Config } from '../config.js';
-import type { ApiResponse, StreamEntry } from '../types.js';
+import type { ApiResponse } from '../types.js';
 
 const log = getLogger();
-
-/** 生成 YYYY-MM-DD HH:MM:ss.SSS 时间戳 */
-function ts(): string {
-  return fmtLocalTs(Date.now());
-}
 
 export interface CallbackResult {
   success: boolean;
@@ -101,19 +95,16 @@ export async function deliverCallback(
   callbackUrl: string,
   payload: ApiResponse,
   cfg: Config,
-  onStream?: (entries: StreamEntry[]) => void,
 ): Promise<CallbackResult> {
   const maxRetries = cfg.sys.callback_retries;
   const baseInterval = cfg.sys.callback_retry_interval_sec * 1000;
   const token = cfg.sys.file_url_token || undefined;
   const bodyStr = JSON.stringify(payload);
 
-  // 生成 curl，输出到流式 + info 日志（方便排查）
+  // 生成 curl，输出到 info 日志（方便排查）
   const bodyEsc = bodyStr.replace(/'/g, "'\\''");
   const authHeader = token ? `-H 'Authorization: Bearer ${token}'` : "-H 'Authorization: Bearer sk-***'";
   const curlCmd = `curl -k --noproxy '*' -w'\\n' -H 'Content-Type: application/json' ${authHeader} -d '${bodyEsc}' ${callbackUrl}`;
-
-  onStream?.([{ ts: ts(), type: 'system', text: `开始回调 POST ${callbackUrl}`, tool_name: 'callback', tool_input: curlCmd }]);
 
   // 打印 request（包含 curl）和完整 payload
   log.info({ taskId: payload.task_id, url: callbackUrl || '(空)', curl: curlCmd }, 'callback_request');
@@ -128,7 +119,6 @@ export async function deliverCallback(
     if (attempt > 0) {
       retryCount = attempt;
       const delay = baseInterval * Math.pow(2, attempt - 1);
-      onStream?.([{ ts: ts(), type: 'system', text: `回调重试 #${attempt}，${delay}ms 后重试` }]);
       // 重试时打印上次 HTTP 状态码
       log.warn(
         { taskId: payload.task_id, attempt, delayMs: delay, lastStatusCode, lastError, lastResponseBody: lastResponseBody.slice(0, 500) },
@@ -142,12 +132,6 @@ export async function deliverCallback(
     lastStatusCode = result.statusCode;
     lastError = result.error;
     if (result.ok) {
-      onStream?.([{
-        ts: ts(),
-        type: 'tool_result',
-        text: `回调成功 (HTTP ${result.statusCode})`,
-        tool_output: lastResponseBody,
-      }]);
       log.info(
         { taskId: payload.task_id, retries: retryCount, statusCode: result.statusCode, response_body: lastResponseBody },
         'callback_success',
@@ -159,12 +143,6 @@ export async function deliverCallback(
   const httpInfo = lastStatusCode ? `HTTP ${lastStatusCode}` : '';
   const errInfo = lastError ? (httpInfo ? ` (${httpInfo}: ${lastError})` : ` (${lastError})`) : (httpInfo ? ` (${httpInfo})` : '');
   const errMsg = `回调失败${errInfo}，已重试 ${maxRetries} 次`;
-  onStream?.([{
-    ts: ts(),
-    type: 'error',
-    text: errMsg,
-    tool_output: lastResponseBody,
-  }]);
   log.error(
     { taskId: payload.task_id, retries: maxRetries, lastStatusCode, lastError, last_response_body: lastResponseBody },
     'callback_all_retries_failed',

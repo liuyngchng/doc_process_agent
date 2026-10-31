@@ -1,8 +1,9 @@
 /**
  * Claude Code Agent SDK 调用封装
  *
- * 每个任务一个独立工作目录，写入 CLAUDE.md 行为规范，
- * 然后通过 SDK 的 query() 执行。
+ * - 工作目录：data/tasks/<sanitize(linkid)>/
+ * - 支持 session 复用：通过 resume 参数恢复历史对话
+ * - CLACDE.md 仅首次写入，resume 时不再覆盖（SDK snapshot 机制）
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -10,9 +11,13 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import { getLogger } from '../logger.js';
 import { fmtLocalTs } from '../time.js';
 import type { Config } from '../config.js';
-import type { StreamEntry } from '../types.js';
 
 const log = getLogger();
+
+/** 替换路径分隔符和危险字符，确保 mkdir 成功 */
+function sanitizeDirName(s: string): string {
+  return s.replace(/[/\\:*?"<>|]/g, '_');
+}
 
 /** 根据 LLM 配置构建 Claude Code 子进程环境变量 */
 function buildEnv(cfg: Config): Record<string, string | undefined> {
@@ -175,6 +180,9 @@ ${docAuditSection}
 3. 最终结果用 \`\`\`json 代码块包裹
 4. json 代码块之外不要输出任何其他内容
 5. 如果下载失败或文件无法识别，在 JSON 中标记 need_human: true
+6. 如果本次请求涉及某个文件，但当前上下文里没有该文件的文本内容（例如历史被压缩、或这是新文件），
+   按"文件下载"章节自行 curl 下载，并调用文档解析服务提取文本后再分析。
+   若上下文里已有该文件的文本，直接复用，无需重复下载。
 `;
 }
 
@@ -182,104 +190,43 @@ export interface SdkResult {
   success: boolean;
   rawOutput: string;
   trace: string;
+  sessionId?: string;       // SDK 返回的 session_id，用于后续 resume
   errorMessage?: string;
   durationMs: number;
 }
 
-function ts(): string {
-  return fmtLocalTs(Date.now());
-}
-
-/** 需要过滤掉的 SDK 内部系统消息（度量/调试类，对用户无意义）*/
-const NOISE_SYSTEM_SUBTYPES = new Set([
-  'thinking_tokens',
-  'stream_event',
-  'token_count',
-  'model_usage',
-]);
-
-/** 把单条 SDK 消息拆解成人类可读的 StreamEntry 数组 */
-function parseMessage(msg: Record<string, unknown>): StreamEntry[] {
-  const entries: StreamEntry[] = [];
-  const now = ts();
-
-  if (msg.type === 'assistant') {
-    const message = msg.message as Record<string, unknown> | undefined;
-    const blocks = (message?.content as Array<Record<string, unknown>>) ?? [];
-    for (const block of blocks) {
-      if (block.type === 'text' && typeof block.text === 'string') {
-        entries.push({ ts: now, type: 'text', text: block.text });
-      } else if (block.type === 'tool_use') {
-        const name = String(block.name ?? 'unknown');
-        const input = JSON.stringify(block.input ?? {});
-        entries.push({
-          ts: now,
-          type: 'tool',
-          text: `调用工具: ${name}`,
-          tool_name: name,
-          tool_input: input,
-        });
-      }
-      // thinking / redacted_thinking 等内部推理 block 直接忽略，不展示
-    }
-  } else if (msg.type === 'user') {
-    // user 消息可能包含 tool_result
-    const message = msg.message as Record<string, unknown> | undefined;
-    const content = message?.content;
-    if (Array.isArray(content)) {
-      for (const block of content as Array<Record<string, unknown>>) {
-        if (block.type === 'tool_result') {
-          const isError = !!block.is_error;
-          let output = '';
-          if (Array.isArray(block.content)) {
-            output = (block.content as Array<{ type?: string; text?: string }>)
-              .filter(c => c.type === 'text' && typeof c.text === 'string')
-              .map(c => c.text!).join('\n');
-          } else if (typeof block.content === 'string') {
-            output = block.content;
-          }
-          // 截断过长输出
-          if (output.length > 200) output = output.slice(0, 200) + '...';
-          entries.push({
-            ts: now,
-            type: isError ? 'error' : 'tool_result',
-            text: isError ? `工具执行出错: ${output}` : output || '(空)',
-            tool_output: output,
-          });
-        }
-      }
-    }
-  } else if (msg.type === 'system') {
-    const subtype = String(msg.subtype ?? '');
-    // 过滤内部度量消息（thinking_tokens 等），只保留有意义的系统消息
-    if (subtype && !NOISE_SYSTEM_SUBTYPES.has(subtype)) {
-      entries.push({ ts: now, type: 'system', text: subtype });
-    }
-  }
-
-  return entries;
-}
-
+/**
+ * 运行 Claude Agent SDK 处理一个任务。
+ *
+ * @param linkid - 公文审批 id，同时作为工作目录名（sanitize 后）
+ * @param renderedPrompt - 渲染后的提示词
+ * @param cfg - 配置
+ * @param resumeSessionId - 若传入则 resume 该 session（同一公文复用会话）
+ */
 export async function runAgent(
+  linkid: string,
   taskId: string,
   renderedPrompt: string,
   cfg: Config,
-  onStreamEntry?: (entries: StreamEntry[]) => void,
+  resumeSessionId?: string,
 ): Promise<SdkResult> {
-  const workDir = join(cfg.sys.data_dir, 'tasks', taskId);
+  const workDir = join(cfg.sys.data_dir, 'tasks', sanitizeDirName(linkid));
   await mkdir(workDir, { recursive: true });
 
-  // 写入 CLAUDE.md（含 doc_util 解析服务地址 + 文件 URL 续期回退说明 + rdCLI 审稿服务说明）
-  await writeFile(
-    join(workDir, 'CLAUDE.md'),
-    buildClaudeMd(cfg.sys.doc_util_url, cfg.sys.renew_file_url_api, cfg.doc_audit.api_url, cfg.server.port),
-    'utf8',
-  );
+  // CLAUDE.md 仅首次写入（resume 时不覆盖，因为 SDK snapshot 已固化 system prompt）
+  if (!resumeSessionId) {
+    await writeFile(
+      join(workDir, 'CLAUDE.md'),
+      buildClaudeMd(cfg.sys.doc_util_url, cfg.sys.renew_file_url_api, cfg.doc_audit.api_url, cfg.server.port),
+      'utf8',
+    );
+  }
 
-  log.info({ taskId }, 'sdk_run_start');
+  log.info({ taskId, linkid, resumeSessionId: resumeSessionId || '(new)', workDir }, 'sdk_run_start');
 
   const start = Date.now();
   let fullOutput = '';
+  let capturedSessionId: string | undefined;
   const traceMessages: unknown[] = [];
 
   try {
@@ -292,22 +239,25 @@ export async function runAgent(
         model: cfg.llm.model,
         env: buildEnv(cfg),
         systemPrompt: { type: 'preset', preset: 'claude_code' },
+        ...(resumeSessionId ? { resume: resumeSessionId } : {}),
       },
     });
 
     for await (const message of q) {
       traceMessages.push(message);
 
-      // 实时回调：把 SDK 消息拆成可读条目
-      if (onStreamEntry) {
-        const entries = parseMessage(message);
-        if (entries.length > 0) onStreamEntry(entries);
+      // 首条消息即捕获 session_id，用于立即写入 sessions 表
+      const sid = (message as Record<string, unknown>).session_id;
+      if (!capturedSessionId && typeof sid === 'string' && sid) {
+        capturedSessionId = sid;
       }
 
-      if (message.type === 'assistant') {
-        const blocks = message.message?.content;
+      // 收集 assistant 文本输出
+      if ((message as Record<string, unknown>).type === 'assistant') {
+        const msg = (message as Record<string, unknown>).message as Record<string, unknown> | undefined;
+        const blocks = msg?.content;
         if (Array.isArray(blocks)) {
-          for (const block of blocks) {
+          for (const block of blocks as Array<Record<string, unknown>>) {
             if (block.type === 'text' && typeof block.text === 'string') {
               fullOutput += block.text;
             }
@@ -318,14 +268,14 @@ export async function runAgent(
 
     const durationMs = Date.now() - start;
     const trace = JSON.stringify(traceMessages);
-    log.info({ taskId, durationMs, outputLen: fullOutput.length, traceLen: trace.length }, 'sdk_run_complete');
+    log.info({ taskId, linkid, sessionId: capturedSessionId, durationMs, outputLen: fullOutput.length, traceLen: trace.length }, 'sdk_run_complete');
 
-    return { success: true, rawOutput: fullOutput, trace, durationMs };
+    return { success: true, rawOutput: fullOutput, trace, sessionId: capturedSessionId, durationMs };
   } catch (err) {
     const durationMs = Date.now() - start;
     const message = err instanceof Error ? err.message : String(err);
     const trace = JSON.stringify(traceMessages);
-    log.error({ taskId, durationMs, error: message, partialTraceLen: trace.length }, 'sdk_run_error');
-    return { success: false, rawOutput: fullOutput, trace, errorMessage: message, durationMs };
+    log.error({ taskId, linkid, sessionId: capturedSessionId, durationMs, error: message, partialTraceLen: trace.length }, 'sdk_run_error');
+    return { success: false, rawOutput: fullOutput, trace, sessionId: capturedSessionId, errorMessage: message, durationMs };
   }
 }

@@ -4,7 +4,7 @@ import { readdirSync, rmSync, existsSync } from 'node:fs';
 import { v4 as uuid } from 'uuid';
 import bcrypt from 'bcryptjs';
 import { nowReadable, nowTs, fmtLocalTs } from './time.js';
-import type { AgentInterface, TaskLog, TaskStatus, User, StreamEntry } from './types.js';
+import type { AgentInterface, TaskLog, TaskStatus, User, Session } from './types.js';
 
 let db: Database.Database;
 
@@ -26,6 +26,7 @@ export function initStore(dataDir: string): Database.Database {
     CREATE TABLE IF NOT EXISTS task_logs (
       task_id       TEXT PRIMARY KEY,
       linkid        TEXT,
+      session_id    TEXT,
       path          TEXT,
       interface_id  TEXT,
       status        TEXT,
@@ -33,7 +34,6 @@ export function initStore(dataDir: string): Database.Database {
       request_response TEXT,
       prompt        TEXT,
       sdk_output    TEXT,
-      sdk_trace     TEXT,
       callback_body TEXT,
       callback_response TEXT,
       callback_url  TEXT,
@@ -42,6 +42,16 @@ export function initStore(dataDir: string): Database.Database {
       finished_at   TEXT,
       created_ts    INTEGER,
       finished_ts   INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS sessions (
+      session_id  TEXT PRIMARY KEY,
+      linkid      TEXT NOT NULL UNIQUE,
+      status      TEXT NOT NULL DEFAULT 'active',
+      created_at  TEXT,
+      updated_at  TEXT,
+      created_ts  INTEGER,
+      updated_ts  INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS users (
@@ -61,9 +71,11 @@ export function initStore(dataDir: string): Database.Database {
       note  TEXT
     );
   `);
-  // Migration: add sdk_trace column if missing (added in v0.1.x)
+  // Migration: add session_id column
+  try { db.exec(`ALTER TABLE task_logs ADD COLUMN session_id TEXT`); } catch { /* already exists */ }
+  // Migration: add sdk_trace column if missing (added in v0.1.x) — kept for backward compat, no longer written
   try { db.exec(`ALTER TABLE task_logs ADD COLUMN sdk_trace TEXT`); } catch { /* already exists */ }
-  // Migration: add sdk_stream column for real-time agent output (added in v0.2.x)
+  // Migration: add sdk_stream column for real-time agent output (added in v0.2.x) — kept for backward compat, no longer written
   try { db.exec(`ALTER TABLE task_logs ADD COLUMN sdk_stream TEXT`); } catch { /* already exists */ }
   // Migration: add request_response / callback_response columns (added in v0.3.x)
   try { db.exec(`ALTER TABLE task_logs ADD COLUMN request_response TEXT`); } catch { /* already exists */ }
@@ -81,6 +93,11 @@ export function initStore(dataDir: string): Database.Database {
   try { db.exec(`ALTER TABLE task_logs ADD COLUMN created_ts INTEGER`); } catch { /* already exists */ }
   try { db.exec(`ALTER TABLE task_logs ADD COLUMN finished_ts INTEGER`); } catch { /* already exists */ }
   try { db.exec(`ALTER TABLE users ADD COLUMN created_ts INTEGER`); } catch { /* already exists */ }
+  // Migration: sessions table metadata columns
+  try { db.exec(`ALTER TABLE sessions ADD COLUMN created_at TEXT`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE sessions ADD COLUMN updated_at TEXT`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE sessions ADD COLUMN created_ts INTEGER`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE sessions ADD COLUMN updated_ts INTEGER`); } catch { /* already exists */ }
 
   backfillTsColumns(db);
 
@@ -102,7 +119,6 @@ function backfillTsColumns(db: Database.Database): void {
   ];
 
   for (const { table, ts, at } of rows) {
-    // 只回填 ts 为 NULL 的行（新写入的行 *_ts 已填好）
     const stale = db.prepare(
       `SELECT rowid, ${at} AS at_val FROM ${table} WHERE ${ts} IS NULL AND ${at} IS NOT NULL`
     ).all() as Array<{ rowid: number; at_val: string }>;
@@ -366,8 +382,8 @@ export const taskLogsStore = {
   create(log: TaskLog): void {
     db.prepare(
       `INSERT INTO task_logs
-       (task_id, linkid, path, interface_id, status, request_body, request_response, prompt, sdk_output, sdk_trace, callback_body, callback_response, callback_url, error_message, created_at, finished_at, created_ts, finished_ts)
-       VALUES (@task_id, @linkid, @path, @interface_id, @status, @request_body, @request_response, @prompt, @sdk_output, @sdk_trace, @callback_body, @callback_response, @callback_url, @error_message, @created_at, @finished_at, @created_ts, @finished_ts)`
+       (task_id, linkid, session_id, path, interface_id, status, request_body, request_response, prompt, sdk_output, callback_body, callback_response, callback_url, error_message, created_at, finished_at, created_ts, finished_ts)
+       VALUES (@task_id, @linkid, @session_id, @path, @interface_id, @status, @request_body, @request_response, @prompt, @sdk_output, @callback_body, @callback_response, @callback_url, @error_message, @created_at, @finished_at, @created_ts, @finished_ts)`
     ).run(log);
   },
   updateStatus(taskId: string, status: TaskStatus): void {
@@ -376,7 +392,6 @@ export const taskLogsStore = {
   updateResult(taskId: string, fields: Partial<TaskLog>): void {
     const sets: string[] = [];
     const vals: unknown[] = [];
-    // 设置 finished_at 时自动附带 finished_ts（如果调用方没显式传）
     if (fields.finished_at !== undefined && fields.finished_ts === undefined) {
       fields = { ...fields, finished_ts: nowTs() };
     }
@@ -392,7 +407,7 @@ export const taskLogsStore = {
   get(taskId: string): TaskLog | undefined {
     return db.prepare('SELECT * FROM task_logs WHERE task_id = ?').get(taskId) as TaskLog | undefined;
   },
-  /** 按 linkid 取最新一条任务（linkid 不唯一，按创建时间倒序） */
+  /** 按 linkid 取最新一条任务 */
   getLatestByLinkid(linkid: string): TaskLog | undefined {
     return db.prepare(
       'SELECT * FROM task_logs WHERE linkid = ? ORDER BY created_at DESC LIMIT 1'
@@ -419,19 +434,6 @@ export const taskLogsStore = {
     return db.prepare(
       `SELECT * FROM task_logs WHERE status IN ('pending', 'processing') ORDER BY created_at ASC`
     ).all() as TaskLog[];
-  },
-  /** 追加 SDK 流式输出条目到任务的 sdk_stream JSON 数组 */
-  appendStream(taskId: string, entries: StreamEntry[]): void {
-    if (!entries || entries.length === 0) return;
-    const row = db.prepare('SELECT sdk_stream FROM task_logs WHERE task_id = ?').get(taskId) as { sdk_stream: string | null } | undefined;
-    const existing: StreamEntry[] = row?.sdk_stream ? safeParseArray(row.sdk_stream) : [];
-    const updated = existing.concat(entries);
-    db.prepare('UPDATE task_logs SET sdk_stream = ? WHERE task_id = ?').run(JSON.stringify(updated), taskId);
-  },
-  /** 读取任务当前已积累的 SDK 流式输出 */
-  getStream(taskId: string): StreamEntry[] {
-    const row = db.prepare('SELECT sdk_stream FROM task_logs WHERE task_id = ?').get(taskId) as { sdk_stream: string | null } | undefined;
-    return row?.sdk_stream ? safeParseArray(row.sdk_stream) : [];
   },
   /**
    * 清理过期的非活跃任务记录（status 不在 pending/processing）。
@@ -489,6 +491,52 @@ export const taskLogsStore = {
       items.push(...db.prepare('SELECT * FROM task_logs ORDER BY created_at DESC LIMIT ? OFFSET ?').all(limit, offset) as TaskLog[]);
     }
     return { items, total };
+  },
+};
+
+// ============================================================
+// Session CRUD（linkid ↔ session_id 映射）
+// ============================================================
+export const sessionsStore = {
+  /** 插入或更新（存在则刷新 updated_at，不存在则新建） */
+  upsert(sessionId: string, linkid: string): Session {
+    const now = nowReadable();
+    const ts = nowTs();
+    const existing = db.prepare('SELECT * FROM sessions WHERE session_id = ?').get(sessionId);
+    if (existing) {
+      db.prepare('UPDATE sessions SET updated_at = ?, updated_ts = ? WHERE session_id = ?').run(now, ts, sessionId);
+    } else {
+      db.prepare(
+        'INSERT INTO sessions (session_id, linkid, status, created_at, updated_at, created_ts, updated_ts) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).run(sessionId, linkid, 'active', now, now, ts, ts);
+    }
+    return this.get(sessionId)!;
+  },
+
+  get(sessionId: string): Session | undefined {
+    return db.prepare('SELECT * FROM sessions WHERE session_id = ?').get(sessionId) as Session | undefined;
+  },
+
+  /** 按 linkid 查找 active session */
+  getByLinkid(linkid: string): Session | undefined {
+    return db.prepare(
+      'SELECT * FROM sessions WHERE linkid = ? AND status = ?'
+    ).get(linkid, 'active') as Session | undefined;
+  },
+
+  /** 删除 session（同时删除 SDK 侧持久化的对话历史，需要调用方传 deleteSession） */
+  remove(sessionId: string): boolean {
+    return db.prepare('DELETE FROM sessions WHERE session_id = ?').run(sessionId).changes > 0;
+  },
+
+  /** 清理过期的 session（updated_ts 超过 retentionDays 天） */
+  deleteExpired(retentionDays: number): Session[] {
+    const cutoffMs = nowTs() - retentionDays * 24 * 3600 * 1000;
+    const expired = db.prepare(
+      'SELECT * FROM sessions WHERE updated_ts < ?'
+    ).all(cutoffMs) as Session[];
+    db.prepare('DELETE FROM sessions WHERE updated_ts < ?').run(cutoffMs);
+    return expired;
   },
 };
 
@@ -561,13 +609,3 @@ export const configStore = {
     db.prepare('INSERT INTO config (key, value, note) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, note = excluded.note').run(key, value, note ?? '');
   },
 };
-
-/** 安全解析 JSON 数组，失败时返回空数组 */
-function safeParseArray(s: string): StreamEntry[] {
-  try {
-    const parsed = JSON.parse(s);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}

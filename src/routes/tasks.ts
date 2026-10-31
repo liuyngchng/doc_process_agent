@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { taskLogsStore } from '../store.js';
 import { getLogger } from '../logger.js';
 import { nowReadable } from '../time.js';
-import type { TaskLog, StreamEntry } from '../types.js';
+import type { TaskLog } from '../types.js';
 
 const log = getLogger();
 
@@ -24,6 +24,7 @@ export function createTasksRouter(): Router {
         tasks: tasks.map((t) => ({
           task_id: t.task_id,
           linkid: t.linkid,
+          session_id: t.session_id,
           interface_path: t.path,
           status: t.status,
           callback_url: t.callback_url,
@@ -51,11 +52,6 @@ export function createTasksRouter(): Router {
     }
 
     taskLogsStore.updateStatus(task_id, 'cancelled');
-    taskLogsStore.appendStream(task_id, [{
-      ts: nowReadable(),
-      type: 'system',
-      text: '外部系统通过 API 取消了该任务（DELETE /api/v1/tasks/' + task_id + '，来自 ' + fromIp + '）',
-    }]);
     log.info({ from_ip: fromIp, task_id, linkid: task.linkid }, 'api_cancel_task_ok');
     res.json({ code: 0, message: '任务已取消', task_id, linkid: task.linkid || '' });
   });
@@ -87,6 +83,7 @@ export function createTasksRouter(): Router {
       data: {
         task_id: task.task_id,
         linkid: task.linkid,
+        session_id: task.session_id,
         path: task.path,
         status: task.status,
         request_body: safeParse(task.request_body),
@@ -97,35 +94,6 @@ export function createTasksRouter(): Router {
         created_at: task.created_at,
         finished_at: task.finished_at,
       },
-    });
-  });
-
-  // GET /api/v1/task/stream?taskid=xxx — 实时流式输出
-  router.get('/api/v1/task/stream', (req: Request, res: Response) => {
-    const taskId = typeof req.query.taskid === 'string' ? req.query.taskid : '';
-    const fromIp = req.ip || '';
-    if (!taskId) {
-      log.warn({ from_ip: fromIp }, 'api_task_stream_missing_taskid');
-      res.status(400).json({ code: 1001, message: '缺少 taskid 参数', task_id: '', linkid: '' });
-      return;
-    }
-
-    const task = taskLogsStore.get(taskId);
-    if (!task) {
-      log.warn({ from_ip: fromIp, task_id: taskId }, 'api_task_stream_not_found');
-      res.status(404).json({ code: 1001, message: '任务不存在', task_id: '', linkid: '' });
-      return;
-    }
-
-    const stream = taskLogsStore.getStream(taskId);
-    log.info({ from_ip: fromIp, task_id: taskId, linkid: task.linkid, status: task.status, entries: stream.length }, 'api_task_stream');
-    res.json({
-      code: 0,
-      timestamp: now(),
-      message: 'success',
-      task_id: task.task_id,
-      linkid: task.linkid,
-      data: { status: task.status, stream },
     });
   });
 
@@ -149,8 +117,7 @@ export function createTasksRouter(): Router {
       return;
     }
 
-    const stream = taskLogsStore.getStream(task_id);
-    const events = buildTimelineEvents(task, stream);
+    const events = buildTimelineEvents(task);
     const linkid = task.linkid || '';
 
     log.info({ from_ip: fromIp, task_id, linkid, status: task.status, format, events: events.length }, 'api_task_log');
@@ -162,7 +129,6 @@ export function createTasksRouter(): Router {
       return;
     }
 
-    // 默认 JSON
     res.json({
       code: 0,
       timestamp: now(),
@@ -172,6 +138,7 @@ export function createTasksRouter(): Router {
       data: {
         task_id: task.task_id,
         linkid: task.linkid,
+        session_id: task.session_id,
         path: task.path,
         status: task.status,
         callback_url: task.callback_url,
@@ -203,8 +170,7 @@ export function createTasksRouter(): Router {
       return;
     }
 
-    const stream = taskLogsStore.getStream(task.task_id);
-    const events = buildTimelineEvents(task, stream);
+    const events = buildTimelineEvents(task);
 
     log.info({ from_ip: fromIp, task_id: task.task_id, linkid, status: task.status, format, events: events.length }, 'api_task_link_log');
 
@@ -224,6 +190,7 @@ export function createTasksRouter(): Router {
       data: {
         task_id: task.task_id,
         linkid: task.linkid,
+        session_id: task.session_id,
         path: task.path,
         status: task.status,
         callback_url: task.callback_url,
@@ -239,7 +206,7 @@ export function createTasksRouter(): Router {
 }
 
 // ============================================================
-// 时间线事件构建
+// 时间线事件构建（去掉智能体执行过程，精简为关键节点）
 // ============================================================
 
 interface TimelineEvent {
@@ -249,7 +216,7 @@ interface TimelineEvent {
   detail: string;
 }
 
-function buildTimelineEvents(task: TaskLog, stream: StreamEntry[]): TimelineEvent[] {
+function buildTimelineEvents(task: TaskLog): TimelineEvent[] {
   const events: TimelineEvent[] = [];
 
   // 1. 任务创建
@@ -290,26 +257,7 @@ function buildTimelineEvents(task: TaskLog, stream: StreamEntry[]): TimelineEven
     });
   }
 
-  // 5. 智能体执行过程（流式）
-  for (const entry of stream) {
-    const label =
-      entry.type === 'tool' ? '调用工具 ' + (entry.tool_name || '') :
-      entry.type === 'tool_result' ? '工具返回' :
-      entry.type === 'system' ? '系统消息' :
-      entry.type === 'error' ? '错误' :
-      '智能体输出';
-    let detail = entry.text || '';
-    if (entry.tool_input) detail += '\n\n---- 工具输入 ----\n' + entry.tool_input;
-    if (entry.tool_output) detail += '\n\n---- 工具输出 ----\n' + entry.tool_output;
-    events.push({
-      time: entry.ts || null,
-      type: entry.type || 'text',
-      title: label,
-      detail,
-    });
-  }
-
-  // 6. Agent 最终输出
+  // 5. Agent 输出结果
   if (task.sdk_output) {
     events.push({
       time: task.finished_at,
@@ -319,7 +267,7 @@ function buildTimelineEvents(task: TaskLog, stream: StreamEntry[]): TimelineEven
     });
   }
 
-  // 7. 回调对方 URL
+  // 6. 回调对方 URL
   if (task.callback_url) {
     let detail = 'POST ' + task.callback_url;
     if (task.callback_body) {
@@ -336,7 +284,7 @@ function buildTimelineEvents(task: TaskLog, stream: StreamEntry[]): TimelineEven
     });
   }
 
-  // 8. 完成 / 失败
+  // 7. 完成 / 失败
   const finalTitle = statusText(task.status);
   const finalType =
     task.status === 'completed' ? 'done' :
@@ -463,7 +411,6 @@ function escHtml(s: string | null): string {
 
 function fmtTs(s: string | null): string {
   if (!s) return '-';
-  // 已是 YYYY-MM-DD HH:MM:ss(.SSS) 或旧的 HH:MM:ss.SSS 则原样返回；ISO(含 T/Z) 走转换
   if (/^\d{2}:\d{2}:\d{2}/.test(s) || /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(s)) return s;
   try {
     const d = new Date(s);
