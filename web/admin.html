@@ -103,7 +103,7 @@
                 <h2><i class="fas fa-list-alt"></i> 任务监控</h2>
                 <div class="table-scroll">
 <table class="result-table">
-                    <thead><tr><th class="col-seq">序号</th><th class="col-title">标题</th><th>访问路径</th><th>LinkID</th><th>状态</th><th class="col-date">创建时间</th><th class="col-date">完成时间</th><th class="col-action">对话</th></tr></thead>
+                    <thead><tr><th class="col-seq">序号</th><th class="col-title">标题</th><th>访问路径</th><th>LinkID</th><th>状态</th><th class="col-date">创建时间</th><th class="col-date">完成时间</th><th class="col-action">会话记录</th></tr></thead>
                     <tbody id="tasksTbody"><tr><td colspan="8" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
                 </table>
 </div>
@@ -127,7 +127,8 @@
                     <div class="modal-lg stream-modal-body" style="display:flex;flex-direction:column;">
                         <h3 style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
                             <span id="streamModalTitle"><i class="fas fa-comments"></i> 会话记录</span>
-                            <button type="button" class="cfg-btn cfg-btn-reset" onclick="closeStreamModal()" style="margin-left:auto;">关闭</button>
+                            <button type="button" id="streamExportBtn" class="cfg-btn cfg-btn-sm" onclick="exportStreamMD()" style="display:none;margin-left:auto;"><i class="fas fa-download"></i> 导出</button>
+                            <button type="button" class="cfg-btn-sm" onclick="closeStreamModal()"><i class="fas fa-times"></i> 关闭</button>
                         </h3>
                         <div id="streamStatus" class="stream-status-bar"></div>
                         <pre id="streamMessages" class="stream-terminal term-box"></pre>
@@ -168,8 +169,8 @@
                         <div class="modal-lg" style="width:min(1280px, calc(100vw - 40px));display:flex;flex-direction:column;">
                             <h3 style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
                                 <span><i class="fas fa-history"></i> 任务执行时间线</span>
-                                <button type="button" class="cfg-btn cfg-btn-primary" onclick="exportAuditMd()" style="margin-left:auto;"><i class="fas fa-download"></i> 导出</button>
-                                <button type="button" class="cfg-btn cfg-btn-reset" onclick="closeAuditDetail()"><i class="fas fa-times"></i> 关闭</button>
+                                <button type="button" class="cfg-btn-sm" onclick="exportAuditMd()" style="margin-left:auto;"><i class="fas fa-download"></i> 导出</button>
+                                <button type="button" class="cfg-btn-sm" onclick="closeAuditDetail()"><i class="fas fa-times"></i> 关闭</button>
                             </h3>
                             <div id="auditDetailContent" style="margin-top:20px;flex:1;min-height:0;display:flex;flex-direction:column;"></div>
                         </div>
@@ -932,6 +933,7 @@ function closeStreamModal() {
 let _streamEs = null;         // EventSource 实例
 let _streamSessionId = null;
 let _streamCount = 0;         // 已渲染消息条数
+let _streamMessages = [];     // 原始消息数组，供导出使用
 
 function formatSessionMessages(messages, startSeq) {
     let output = '';
@@ -983,12 +985,103 @@ function formatSessionMessages(messages, startSeq) {
                             output += '│ ' + JSON.stringify(b.input, null, 2).replace(/\n/g, '\n│ ') + '\n';
                         }
                         output += '└─\n';
+                    } else if (b.type === 'thinking' && b.thinking) {
+                        output += '┌─ 🤔 思考:\n';
+                        output += '│ ' + b.thinking.replace(/\n/g, '\n│ ') + '\n';
+                        output += '└─\n';
+                    } else if (b.type === 'redacted_thinking') {
+                        output += '┌─ 🤔 思考 (已过滤): 内容不可见\n└─\n';
                     }
                 }
             }
         }
     }
     return { output, endSeq: seq };
+}
+
+function mdCodeBlock(text, lang) {
+    // 动态围栏：外层反引号数比内容里最长的连续反引号串多 1，避免内容中的 ``` 提前闭合
+    let maxRun = 0, run = 0;
+    for (const ch of text) {
+        if (ch === '`') { run++; if (run > maxRun) maxRun = run; }
+        else run = 0;
+    }
+    const fence = '`'.repeat(Math.max(3, maxRun + 1));
+    return fence + (lang || '') + '\n' + text + '\n' + fence + '\n\n';
+}
+
+function formatSessionMessagesMD(messages, sessionId) {
+    let md = '# 会话记录 ' + sessionId + '\n\n';
+    let seq = 0;
+    for (const msg of messages) {
+        seq++;
+        const ts = msg.message?.timestamp || msg.timestamp || '';
+        const tsStr = ts ? fmtTimelineTs(ts) : '';
+        const roleLabel = msg.type === 'user' ? '用户' : msg.type === 'assistant' ? '助手' : msg.type;
+        md += '## [' + seq + '] ' + tsStr + ' [' + roleLabel + ']\n\n';
+        const c = msg.message?.content;
+        if (typeof c === 'string') {
+            md += mdCodeBlock(c);
+        } else if (Array.isArray(c)) {
+            for (const b of c) {
+                if (b.type === 'text' && b.text) {
+                    md += mdCodeBlock(b.text);
+                } else if (b.type === 'tool_use') {
+                    md += '> >> 工具调用: ' + (b.name || '?');
+                    if (b.id) md += '  (' + b.id + ')';
+                    md += '\n>\n';
+                    if (b.input) {
+                        md += mdCodeBlock(JSON.stringify(b.input, null, 2), 'json');
+                    }
+                } else if (b.type === 'tool_result') {
+                    md += '> [工具返回]';
+                    if (b.tool_use_id) md += '  (' + b.tool_use_id + ')';
+                    md += '\n>\n';
+                    let toolText = '';
+                    if (typeof b.content === 'string') {
+                        toolText = b.content;
+                    } else if (Array.isArray(b.content)) {
+                        for (const cb of b.content) {
+                            if (cb.type === 'text' && cb.text) toolText += cb.text;
+                        }
+                    }
+                    if (toolText) {
+                        md += mdCodeBlock(toolText);
+                    } else {
+                        md += '\n';
+                    }
+                } else if (b.type === 'thinking' && b.thinking) {
+                    md += '> 🤔 思考:\n>\n';
+                    md += mdCodeBlock(b.thinking);
+                } else if (b.type === 'redacted_thinking') {
+                    md += '> 🤔 思考 (已过滤): 内容不可见\n\n';
+                }
+            }
+        }
+    }
+    return md;
+}
+
+function exportStreamMD() {
+    if (!_streamMessages || _streamMessages.length === 0) {
+        return toast('没有可导出的消息', 'error');
+    }
+    const sessionId = _streamSessionId || 'session';
+    // 文件名只用前 8 位，避免过长
+    const shortId = sessionId.length > 8 ? sessionId.substring(0, 8) : sessionId;
+    const hostname = window.location.hostname || 'localhost';
+    const filename = 'session_' + shortId + '_' + hostname + '.md';
+    const md = formatSessionMessagesMD(_streamMessages, sessionId);
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast('已导出: ' + filename, 'success');
 }
 
 async function viewSession(sessionId, taskId, taskStatus) {
@@ -1003,6 +1096,10 @@ async function viewSession(sessionId, taskId, taskStatus) {
     document.getElementById('streamStatus').innerHTML = '<span style="color:#4b6cb7;">加载中...</span>';
     document.getElementById('streamStatus').className = 'stream-status-bar';
 
+    // 隐藏导出按钮（加载完成后显示）
+    const exportBtn = document.getElementById('streamExportBtn');
+    if (exportBtn) exportBtn.style.display = 'none';
+
     const container = document.getElementById('streamMessages');
     container.textContent = '加载中...';
     document.getElementById('streamModal').classList.add('show');
@@ -1016,9 +1113,11 @@ async function viewSession(sessionId, taskId, taskStatus) {
             const json = await res.json();
             const data = json.data || {};
             const messages = Array.isArray(data.messages) ? data.messages : [];
+            _streamMessages = messages;
             const { output } = formatSessionMessages(messages, 0);
             container.textContent = output || '(空会话)';
             _streamCount = messages.length;
+            if (exportBtn) exportBtn.style.display = '';
             document.getElementById('streamStatus').innerHTML = '<span style="color:#4b6cb7;">共 ' + messages.length + ' 条消息</span>';
             document.getElementById('streamStatus').className = 'stream-status-bar stream-status-done';
         } catch (err) {
@@ -1038,9 +1137,11 @@ async function viewSession(sessionId, taskId, taskStatus) {
         // 快照：全量历史
         if (msg.type === 'snapshot') {
             const messages = Array.isArray(msg.messages) ? msg.messages : [];
+            _streamMessages = messages;
             const { output } = formatSessionMessages(messages, 0);
             container.textContent = output || '(空会话)';
             _streamCount = messages.length;
+            if (exportBtn) exportBtn.style.display = '';
             document.getElementById('streamStatus').innerHTML = '<span style="color:#4b6cb7;">共 ' + messages.length + ' 条消息</span>';
             document.getElementById('streamStatus').className = 'stream-status-bar stream-status-done';
             container.scrollTop = container.scrollHeight;
@@ -1048,9 +1149,11 @@ async function viewSession(sessionId, taskId, taskStatus) {
             container.textContent = '读取会话记录失败: ' + (msg.message || '');
         } else {
             // 增量单条消息（SDK 原生消息）
+            _streamMessages.push(msg);
             const { output } = formatSessionMessages([msg], _streamCount);
             container.textContent += output;
             _streamCount++;
+            if (exportBtn) exportBtn.style.display = '';
             document.getElementById('streamStatus').innerHTML = '<span style="color:#4b6cb7;">共 ' + _streamCount + ' 条消息</span>';
             container.scrollTop = container.scrollHeight;
         }
