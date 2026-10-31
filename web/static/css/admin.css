@@ -451,32 +451,48 @@ header p {
 }
 
 /* ---- 表格 ---- */
+.table-scroll {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
 .result-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 0.9rem;
+    white-space: nowrap;
 }
 
 .result-table th {
     background: #f8f9fb;
     font-weight: 600;
     color: #5f6368;
-    text-transform: uppercase;
     font-size: 0.75rem;
     letter-spacing: 0.5px;
     padding: 10px 12px;
     text-align: left;
     border-bottom: 2px solid #e8eaed;
+    white-space: nowrap;
 }
 
 .result-table td {
     padding: 10px 12px;
     border-bottom: 1px solid #f0f0f0;
     color: #444;
+    white-space: nowrap;
 }
 
 .result-table tbody tr:hover { background: #f8f9fe; }
 .result-table tbody tr:last-child td { border-bottom: none; }
+
+/* 标题列 — 来源不可控，设最大宽度，溢出省略 */
+.col-title {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 
 /* 操作列 — 紧凑图标按钮，列宽不换行 */
 .col-action {
@@ -736,6 +752,14 @@ header p {
     border-radius: 4px;
     color: #4b6cb7;
 }
+.audit-info-title {
+    display: inline-block;
+    max-width: 520px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
+}
 .audit-timeline {
     position: relative;
     padding-left: 32px;
@@ -748,6 +772,10 @@ header p {
     bottom: 0;
     width: 2px;
     background: #e0e3e8;
+}
+.audit-timeline-scroll {
+    overflow-y: auto;
+    padding-right: 8px;
 }
 .timeline-item {
     position: relative;

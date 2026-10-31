@@ -27,10 +27,12 @@
                 <button class="cfg-btn cfg-btn-save" onclick="editInterface()" style="margin-bottom:16px;">
                     <i class="fas fa-plus"></i> 创建模板
                 </button>
-                <table class="result-table">
+                <div class="table-scroll">
+<table class="result-table">
                     <thead><tr><th>#</th><th>功能</th><th>访问路径</th><th>更新时间</th><th>操作</th></tr></thead>
                     <tbody id="ifacesTbody"><tr><td colspan="5" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
                 </table>
+</div>
 
                 <div id="ifaceModal" class="modal-overlay">
                     <div class="modal-lg" style="width:min(1280px, calc(100vw - 40px));">
@@ -94,10 +96,12 @@
             <!-- ========== 任务监控 ========== -->
             <div class="cfg-section" id="section-tasks">
                 <h2><i class="fas fa-list-alt"></i> 任务监控</h2>
-                <table class="result-table">
-                    <thead><tr><th>#</th><th>Task ID</th><th>LinkID</th><th>标题</th><th>访问路径</th><th>状态</th><th>创建时间</th><th>完成时间</th><th class="col-action">执行过程</th><th class="col-action">执行结果</th></tr></thead>
-                    <tbody id="tasksTbody"><tr><td colspan="10" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
+                <div class="table-scroll">
+<table class="result-table">
+                    <thead><tr><th>#</th><th class="col-title">标题</th><th>访问路径</th><th>状态</th><th>创建时间</th><th>完成时间</th><th class="col-action">执行过程</th><th class="col-action">执行结果</th></tr></thead>
+                    <tbody id="tasksTbody"><tr><td colspan="8" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
                 </table>
+</div>
                 <div id="tasksPager" class="pager" style="margin-top:16px;display:flex;align-items:center;justify-content:center;gap:12px;"></div>
 
                 <!-- 执行过程 — 终端风格弹窗 -->
@@ -146,21 +150,23 @@
                         </button>
                     </div>
 
-                    <table class="result-table">
-                        <thead><tr><th>#</th><th>标题</th><th>Task ID</th><th>Link ID</th><th>访问路径</th><th>状态</th><th>创建时间</th><th>完成时间</th><th class="col-action">详情</th></tr></thead>
-                        <tbody id="auditTbody"><tr><td colspan="9" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
+                    <div class="table-scroll">
+<table class="result-table">
+                        <thead><tr><th>#</th><th class="col-title">标题</th><th>访问路径</th><th>状态</th><th>创建时间</th><th>完成时间</th><th class="col-action">详情</th></tr></thead>
+                        <tbody id="auditTbody"><tr><td colspan="7" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
                     </table>
+</div>
                     <div id="auditPager" class="pager" style="margin-top:16px;display:flex;align-items:center;justify-content:center;gap:12px;"></div>
 
                     <!-- 时间线详情弹窗 -->
                     <div id="auditDetailModal" class="modal-overlay">
-                        <div class="modal-lg" style="width:min(1280px, calc(100vw - 40px));">
-                            <h3><i class="fas fa-history"></i> 任务时间线</h3>
-                            <div id="auditDetailContent" style="margin-top:20px;"></div>
-                            <div class="modal-actions">
-                                <button type="button" class="cfg-btn cfg-btn-primary" onclick="exportAuditMd()"><i class="fas fa-download"></i> 导出 HTML</button>
+                        <div class="modal-lg" style="width:min(1280px, calc(100vw - 40px));display:flex;flex-direction:column;">
+                            <h3 style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+                                <span><i class="fas fa-history"></i> 任务时间线</span>
+                                <button type="button" class="cfg-btn cfg-btn-primary" onclick="exportAuditMd()" style="margin-left:auto;"><i class="fas fa-download"></i> 导出</button>
                                 <button type="button" class="cfg-btn cfg-btn-reset" onclick="closeAuditDetail()">关闭</button>
-                            </div>
+                            </h3>
+                            <div id="auditDetailContent" style="margin-top:20px;flex:1;min-height:0;display:flex;flex-direction:column;"></div>
                         </div>
                     </div>
                 </div>
@@ -220,10 +226,12 @@
                             <i class="fas fa-plus"></i> 添加用户
                         </button>
                     </div>
-                    <table class="result-table">
+                    <div class="table-scroll">
+<table class="result-table">
                         <thead><tr><th>#</th><th>用户名</th><th>角色</th><th>备注</th><th>操作</th></tr></thead>
                         <tbody id="usersTbody"><tr><td colspan="5" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
                     </table>
+</div>
                 </div>
             </div>
         </div>
@@ -414,21 +422,20 @@ function renderTasksPage(list) {
     const totalPages = Math.max(1, Math.ceil(total / TASKS_PAGE_SIZE));
     const tbody = document.getElementById('tasksTbody');
     if (total === 0) {
-        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#999;padding:24px;">暂无任务</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;padding:24px;">暂无任务</td></tr>';
         document.getElementById('tasksPager').innerHTML = '';
         return;
     }
     const start = (_tasksPage - 1) * TASKS_PAGE_SIZE;
     tbody.innerHTML = list.map((t, i) => {
         const no = start + i + 1;
+        const rid = 'trow-' + no;
         const taskId = escHtml(t.task_id);
         const title = t.title || '-';
-        const titleDisplay = title.length > 15 ? escHtml(title.substring(0, 15)) + '...' : escHtml(title);
-        return `<tr>
+        const titleDisplay = title.length > 20 ? escHtml(title.substring(0, 20)) + '...' : escHtml(title);
+        return `<tr class="main-row">
             <td>${no}</td>
-            <td style="font-family:monospace;font-size:0.8rem;">${taskId.substring(0, 18)}...</td>
-            <td>${escHtml(t.linkid || '-')}</td>
-            <td><span title="${escHtml(title)}" style="cursor:default;">${titleDisplay}</span></td>
+            <td class="col-title"><span title="${escHtml(title)}" onclick="toggleRowDetail('${rid}')" style="cursor:pointer;color:#4b6cb7;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:4px;">${titleDisplay}</span><div class="row-sub" id="${rid}" style="display:none;font-size:0.78rem;color:#666;padding-top:4px;"><span class="audit-info-label">Task:</span> <code>${taskId.substring(0, 18)}...</code> <span class="audit-info-label" style="margin-left:8px;">LinkID:</span> <code>${escHtml(t.linkid || '-')}</code></div></td>
             <td><span class="path-mono">${escHtml(t.path || '-')}</span></td>
             <td>${statusText(t.status)}</td>
             <td>${fmtTs(t.created_at)}</td>
@@ -910,21 +917,20 @@ function renderAuditPage(list) {
     const totalPages = Math.max(1, Math.ceil(total / AUDIT_PAGE_SIZE));
     const tbody = document.getElementById('auditTbody');
     if (total === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;padding:24px;">暂无记录</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;padding:24px;">暂无记录</td></tr>';
         document.getElementById('auditPager').innerHTML = '';
         return;
     }
     const start = (_auditPage - 1) * AUDIT_PAGE_SIZE;
     tbody.innerHTML = list.map((t, i) => {
         const no = start + i + 1;
+        const rid = 'arow-' + no;
         const taskId = escHtml(t.task_id);
         const title = t.title || '-';
-        const titleDisplay = title.length > 15 ? escHtml(title.substring(0, 15)) + '...' : escHtml(title);
-        return `<tr>
+        const titleDisplay = title.length > 20 ? escHtml(title.substring(0, 20)) + '...' : escHtml(title);
+        return `<tr class="main-row">
             <td>${no}</td>
-            <td><span title="${escHtml(title)}" style="cursor:default;">${titleDisplay}</span></td>
-            <td style="font-family:monospace;font-size:0.8rem;">${taskId.substring(0, 18)}...</td>
-            <td>${escHtml(t.linkid || '-')}</td>
+            <td class="col-title"><span title="${escHtml(title)}" onclick="toggleRowDetail('${rid}')" style="cursor:pointer;color:#4b6cb7;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:4px;">${titleDisplay}</span><div class="row-sub" id="${rid}" style="display:none;font-size:0.78rem;color:#666;padding-top:4px;"><span class="audit-info-label">Task:</span> <code>${taskId.substring(0, 18)}...</code> <span class="audit-info-label" style="margin-left:8px;">Link ID:</span> <code>${escHtml(t.linkid || '-')}</code></div></td>
             <td><span class="path-mono">${escHtml(t.path || '-')}</span></td>
             <td>${statusText(t.status)}</td>
             <td>${fmtTs(t.created_at)}</td>
@@ -933,6 +939,11 @@ function renderAuditPage(list) {
         </tr>`;
     }).join('');
     document.getElementById('auditPager').innerHTML = pagerHtml(_auditPage, totalPages, 'loadAudit');
+}
+
+function toggleRowDetail(rid) {
+    var el = document.getElementById(rid);
+    if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
 }
 
 function pagerHtml(page, totalPages, fnName) {
@@ -958,13 +969,16 @@ async function viewAuditDetail(taskId) {
 function auditTimelineHtml(t) {
     const events = buildAuditEvents(t);
     const title = t.title || '-';
-    // 顶部信息条
-    let html = '<div class="audit-info-bar">' +
-        '<div class="audit-info-row"><span class="audit-info-label">Task ID:</span> <code>' + escHtml(t.task_id) + '</code></div>' +
-        '<div class="audit-info-row"><span class="audit-info-label">Link ID:</span> <code>' + escHtml(t.linkid || '-') + '</code></div>' +
-        '<div class="audit-info-row"><span class="audit-info-label">标题:</span> ' + escHtml(title) + '</div>' +
+    const startStr = fmtTs(t.created_at);
+    const endStr = t.finished_at ? fmtTs(t.finished_at) : '处理中';
+    // 顶部信息条（固定不随滚动）
+    let html = '<div class="audit-info-bar" style="flex-shrink:0;">' +
+        '<div class="audit-info-row"><span class="audit-info-label">标题:</span> <span class="audit-info-title">' + escHtml(title) + '</span></div>' +
+        '<div class="audit-info-row"><span class="audit-info-label">执行周期:</span> ' + escHtml(startStr) + ' ~ ' + escHtml(endStr) + '</div>' +
+        '<div class="audit-info-row"><span class="audit-info-label">Task ID:</span> <code>' + escHtml(t.task_id) + '</code> <span class="audit-info-label" style="margin-left:16px;">Link ID:</span> <code>' + escHtml(t.linkid || '-') + '</code></div>' +
         '</div>';
-    // 渲染时间线
+    // 时间线 — 可滚动
+    html += '<div class="audit-timeline-scroll" style="flex:1;min-height:0;">';
     html += '<div class="audit-timeline">';
     let step = 0;
     for (const ev of events) {
@@ -995,6 +1009,7 @@ function auditTimelineHtml(t) {
         html += '</div></div>';
     }
     html += '</div>';
+    html += '</div>';  // close audit-timeline-scroll
     return html;
 }
 
