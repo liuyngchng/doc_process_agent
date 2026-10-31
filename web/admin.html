@@ -88,11 +88,11 @@
                         </div>
                         <div id="simResultWrap" style="display:none; margin-top:16px;">
                             <div class="sim-result-title" style="color:#888;font-size:0.82rem;font-weight:600;margin-bottom:6px;">返回结果</div>
-                            <pre id="simResult" style="background:#2d2d2d; color:#f8f8f2; padding:14px; border-radius:8px; font-size:0.82rem; font-family:'SF Mono','Consolas','Monaco',monospace; max-height:300px; overflow-y:auto; white-space:pre-wrap; word-break:break-all; margin:0;"></pre>
+                            <pre id="simResult" class="term-box" style="background:#2d2d2d; color:#f8f8f2; padding:14px; border-radius:8px; font-size:0.82rem; font-family:'SF Mono','Consolas','Monaco',monospace; max-height:300px; overflow-y:auto; white-space:pre-wrap; word-break:break-all; margin:0;"></pre>
                             <div class="sim-curl-title" onclick="toggleSimCurl()" style="color:#888;font-size:0.82rem;font-weight:600;margin:12px 0 6px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;">
                                 <i class="fas fa-chevron-right" id="simCurlToggle" style="font-size:0.7rem;"></i> 提交的 curl
                             </div>
-                            <pre id="simCurl" style="display:none; background:#2d2d2d; color:#f8f8f2; padding:14px; border-radius:8px; font-size:0.82rem; font-family:'SF Mono','Consolas','Monaco',monospace; max-height:300px; overflow-y:auto; white-space:pre-wrap; word-break:break-all; margin:0;"></pre>
+                            <pre id="simCurl" class="term-box" style="display:none; background:#2d2d2d; color:#f8f8f2; padding:14px; border-radius:8px; font-size:0.82rem; font-family:'SF Mono','Consolas','Monaco',monospace; max-height:300px; overflow-y:auto; white-space:pre-wrap; word-break:break-all; margin:0;"></pre>
                         </div>
                     </div>
                 </div>
@@ -117,7 +117,7 @@
                             <button type="button" class="cfg-btn cfg-btn-reset" onclick="closeStreamModal()" style="margin-left:auto;">关闭</button>
                         </h3>
                         <div id="streamStatus" class="stream-status-bar"></div>
-                        <pre id="streamMessages" class="stream-terminal"></pre>
+                        <pre id="streamMessages" class="stream-terminal term-box"></pre>
                     </div>
                 </div>
 
@@ -483,19 +483,19 @@ function taskDetailHtml(t) {
     // 折叠区 — 可滚动
     html += '<div class="task-steps-scroll" style="flex:1;min-height:0;overflow-y:auto;padding-top:12px;">';
     html += '<div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> ' + (++step) + '. 请求体 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>';
-    html += '<div class="task-detail-json" style="display:none;">' + escHtml(jsonFmt(t.request_body)) + '</div>';
+    html += '<div class="task-detail-json term-box" style="display:none;">' + escHtml(jsonFmt(t.request_body)) + '</div>';
     html += '<div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-left"></i> ' + (++step) + '. 请求体返回 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>';
-    html += '<div class="task-detail-json" style="display:none;">' + escHtml(jsonFmt(t.request_response)) + '</div>';
+    html += '<div class="task-detail-json term-box" style="display:none;">' + escHtml(jsonFmt(t.request_response)) + '</div>';
     html += '<div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> ' + (++step) + '. 提示词 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>';
-    html += '<div class="task-detail-json" style="display:none;">' + escHtml(t.prompt || '(未记录)') + '</div>';
+    html += '<div class="task-detail-json term-box" style="display:none;">' + escHtml(t.prompt || '(未记录)') + '</div>';
     html += '<div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> ' + (++step) + '. Agent 输出 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>';
-    html += '<div class="task-detail-json" style="display:none;">' + escHtml(t.sdk_output || '(未记录)') + '</div>';
+    html += '<div class="task-detail-json term-box" style="display:none;">' + escHtml(t.sdk_output || '(未记录)') + '</div>';
     html += '<div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> ' + (++step) + '. SDK 调用追踪 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>';
-    html += '<div class="task-detail-json" style="display:none;">' + escHtml(jsonFmt(t.sdk_trace)) + '</div>';
+    html += '<div class="task-detail-json term-box" style="display:none;">' + escHtml(jsonFmt(t.sdk_trace)) + '</div>';
     html += '<div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> ' + (++step) + '. 回调体 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>';
-    html += '<div class="task-detail-json" style="display:none;">' + escHtml(jsonFmt(t.callback_body)) + '</div>';
+    html += '<div class="task-detail-json term-box" style="display:none;">' + escHtml(jsonFmt(t.callback_body)) + '</div>';
     html += '<div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-left"></i> ' + (++step) + '. 回调体返回 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>';
-    html += '<div class="task-detail-json" style="display:none;">' + escHtml(jsonFmt(t.callback_response)) + '</div>';
+    html += '<div class="task-detail-json term-box" style="display:none;">' + escHtml(jsonFmt(t.callback_response)) + '</div>';
     html += '</div>';
     return html;
 }
@@ -741,6 +741,55 @@ document.addEventListener('keydown', function(e) {
         if (document.getElementById('taskModal').classList.contains('show')) closeTaskModal();
         if (document.getElementById('streamModal').classList.contains('show')) closeStreamModal();
         if (document.getElementById('auditDetailModal').classList.contains('show')) closeAuditDetail();
+    }
+});
+
+// 终端黑框：鼠标悬停时 Ctrl+A 全选框内、Ctrl+C 复制框内
+function selectTermBox(box) {
+    const range = document.createRange();
+    range.selectNodeContents(box);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+}
+
+// 追踪当前鼠标悬停的终端框（keydown 的 e.target 是焦点元素，不代表鼠标位置）
+let _hoveredTermBox = null;
+document.addEventListener('mouseover', function(e) {
+    _hoveredTermBox = e.target.closest('.term-box');
+});
+document.addEventListener('mouseout', function(e) {
+    const box = e.target.closest('.term-box');
+    if (box && !box.contains(e.relatedTarget)) _hoveredTermBox = null;
+});
+
+document.addEventListener('keydown', function(e) {
+    const mod = e.ctrlKey || e.metaKey;
+    if (!mod) return;
+
+    const box = _hoveredTermBox;
+    if (!box) return;
+
+    if (e.key === 'a' || e.key === 'A') {
+        e.preventDefault();
+        selectTermBox(box);
+        return;
+    }
+
+    if (e.key === 'c' || e.key === 'C') {
+        const sel = window.getSelection();
+        const hasSelection = sel && !sel.isCollapsed &&
+            box.contains(sel.anchorNode) && box.contains(sel.focusNode);
+        if (!hasSelection) {
+            e.preventDefault();
+            selectTermBox(box);
+        }
+        try {
+            document.execCommand('copy');
+            toast('已复制框内内容');
+        } catch (err) {
+            toast('复制失败', 'error');
+        }
     }
 });
 
@@ -1044,7 +1093,7 @@ function auditTimelineHtml(t) {
         html += '<strong>' + step + '. ' + escHtml(ev.title) + '</strong>';
         html += '<i class="fas fa-chevron-right timeline-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>';
         if (ev.detail) {
-            html += '<pre class="timeline-detail" style="display:none;">' + escHtml(ev.detail) + '</pre>';
+            html += '<pre class="timeline-detail term-box" style="display:none;">' + escHtml(ev.detail) + '</pre>';
         }
         html += '</div></div>';
     }
