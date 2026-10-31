@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { readdirSync, rmSync, existsSync } from 'node:fs';
 import { v4 as uuid } from 'uuid';
 import bcrypt from 'bcryptjs';
+import { nowReadable, nowTs, fmtLocalTs } from './time.js';
 import type { AgentInterface, TaskLog, TaskStatus, User, StreamEntry } from './types.js';
 
 let db: Database.Database;
@@ -17,7 +18,9 @@ export function initStore(dataDir: string): Database.Database {
       path        TEXT NOT NULL UNIQUE,
       prompt      TEXT NOT NULL,
       created_at  TEXT,
-      updated_at  TEXT
+      updated_at  TEXT,
+      created_ts  INTEGER,
+      updated_ts  INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS task_logs (
@@ -36,7 +39,9 @@ export function initStore(dataDir: string): Database.Database {
       callback_url  TEXT,
       error_message TEXT,
       created_at    TEXT,
-      finished_at   TEXT
+      finished_at   TEXT,
+      created_ts    INTEGER,
+      finished_ts   INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS users (
@@ -46,7 +51,8 @@ export function initStore(dataDir: string): Database.Database {
       role            INTEGER DEFAULT 0,
       note            TEXT DEFAULT '',
       must_change_pwd INTEGER DEFAULT 0,
-      created_at      TEXT
+      created_at      TEXT,
+      created_ts      INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS config (
@@ -65,36 +71,76 @@ export function initStore(dataDir: string): Database.Database {
   // Migration: add users / config tables if missing (added in v0.2.x)
   try { db.exec(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, role INTEGER DEFAULT 0, note TEXT DEFAULT '', must_change_pwd INTEGER DEFAULT 0, created_at TEXT)`); } catch { /* already exists */ }
   try { db.exec(`CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT NOT NULL, note TEXT)`); } catch { /* already exists */ }
+  // Migration: add must_change_pwd column
   try { db.exec(`ALTER TABLE users ADD COLUMN must_change_pwd INTEGER DEFAULT 0`); } catch { /* already exists */ }
+  // Migration: add user_version column for per-user token invalidation
+  try { db.exec(`ALTER TABLE users ADD COLUMN user_version INTEGER DEFAULT 1`); } catch { /* already exists */ }
+  // Migration: add *_ts Unix 毫秒时间戳列（检索用）
+  try { db.exec(`ALTER TABLE agent_interfaces ADD COLUMN created_ts INTEGER`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE agent_interfaces ADD COLUMN updated_ts INTEGER`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE task_logs ADD COLUMN created_ts INTEGER`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE task_logs ADD COLUMN finished_ts INTEGER`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE users ADD COLUMN created_ts INTEGER`); } catch { /* already exists */ }
+
+  backfillTsColumns(db);
 
   seedDefaults(db);
   return db;
+}
+
+/**
+ * 回填 *_ts 列：旧数据 *_at 是 ISO 字符串，转成 Unix 毫秒；
+ * 同时把 *_at 从 ISO 转成可读本地时间（YYYY-MM-DD HH:MM:ss.SSS）。
+ */
+function backfillTsColumns(db: Database.Database): void {
+  const rows = [
+    { table: 'agent_interfaces', ts: 'created_ts', at: 'created_at' },
+    { table: 'agent_interfaces', ts: 'updated_ts', at: 'updated_at' },
+    { table: 'task_logs', ts: 'created_ts', at: 'created_at' },
+    { table: 'task_logs', ts: 'finished_ts', at: 'finished_at' },
+    { table: 'users', ts: 'created_ts', at: 'created_at' },
+  ];
+
+  for (const { table, ts, at } of rows) {
+    // 只回填 ts 为 NULL 的行（新写入的行 *_ts 已填好）
+    const stale = db.prepare(
+      `SELECT rowid, ${at} AS at_val FROM ${table} WHERE ${ts} IS NULL AND ${at} IS NOT NULL`
+    ).all() as Array<{ rowid: number; at_val: string }>;
+
+    const update = db.prepare(`UPDATE ${table} SET ${ts} = ?, ${at} = ? WHERE rowid = ?`);
+    for (const r of stale) {
+      const ms = Date.parse(r.at_val);
+      if (Number.isNaN(ms)) continue;
+      update.run(ms, fmtLocalTs(ms), r.rowid);
+    }
+  }
 }
 
 export function getDb(): Database.Database {
   return db;
 }
 
-// 初始化默认接口
+// 初始化默认访问路径
 function seedDefaults(db: Database.Database) {
   const ifaceCount = (db.prepare('SELECT COUNT(*) AS c FROM agent_interfaces').get() as { c: number }).c;
   if (ifaceCount === 0) {
-    const now = new Date().toISOString();
+    const now = nowReadable();
+    const ts = nowTs();
     const insert = db.prepare(
-      'INSERT INTO agent_interfaces (id, name, path, prompt, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+      'INSERT INTO agent_interfaces (id, name, path, prompt, created_at, updated_at, created_ts, updated_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     );
 
-    insert.run(uuid(), '收文分类', 'document/classify', defaultClassifyPrompt(), now, now);
-    insert.run(uuid(), '流转目标识别', 'document/route', defaultRoutePrompt(), now, now);
-    insert.run(uuid(), '发文审核', 'document/dispatch-review', defaultDispatchReviewPrompt(), now, now);
+    insert.run(uuid(), '收文分类', 'document/classify', defaultClassifyPrompt(), now, now, ts, ts);
+    insert.run(uuid(), '流转目标识别', 'document/route', defaultRoutePrompt(), now, now, ts, ts);
+    insert.run(uuid(), '发文审核', 'document/dispatch-review', defaultDispatchReviewPrompt(), now, now, ts, ts);
   }
 
   // 初始化默认 admin 用户（密码 admin/admin，首次登录必须改密）
   const userCount = (db.prepare('SELECT COUNT(*) AS c FROM users').get() as { c: number }).c;
   if (userCount === 0) {
     db.prepare(
-      'INSERT INTO users (username, password_hash, role, note, must_change_pwd, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run('admin', hashPasswordSync('admin'), 1, '默认管理员', 1, new Date().toISOString());
+      'INSERT INTO users (username, password_hash, role, note, must_change_pwd, created_at, created_ts) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run('admin', hashPasswordSync('admin'), 1, '默认管理员', 1, nowReadable(), nowTs());
   }
 }
 
@@ -279,7 +325,7 @@ function defaultDispatchReviewPrompt(): string {
 }
 
 // ============================================================
-// 接口 CRUD
+// 访问路径 CRUD
 // ============================================================
 export const interfacesStore = {
   list(): AgentInterface[] {
@@ -293,17 +339,19 @@ export const interfacesStore = {
   },
   create(name: string, path: string, prompt: string): AgentInterface {
     const id = uuid();
-    const now = new Date().toISOString();
+    const now = nowReadable();
+    const ts = nowTs();
     db.prepare(
-      'INSERT INTO agent_interfaces (id, name, path, prompt, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(id, name, path, prompt, now, now);
+      'INSERT INTO agent_interfaces (id, name, path, prompt, created_at, updated_at, created_ts, updated_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(id, name, path, prompt, now, now, ts, ts);
     return this.get(id)!;
   },
   update(id: string, name: string, path: string, prompt: string): AgentInterface | undefined {
-    const now = new Date().toISOString();
+    const now = nowReadable();
+    const ts = nowTs();
     db.prepare(
-      'UPDATE agent_interfaces SET name = ?, path = ?, prompt = ?, updated_at = ? WHERE id = ?'
-    ).run(name, path, prompt, now, id);
+      'UPDATE agent_interfaces SET name = ?, path = ?, prompt = ?, updated_at = ?, updated_ts = ? WHERE id = ?'
+    ).run(name, path, prompt, now, ts, id);
     return this.get(id);
   },
   remove(id: string): boolean {
@@ -318,8 +366,8 @@ export const taskLogsStore = {
   create(log: TaskLog): void {
     db.prepare(
       `INSERT INTO task_logs
-       (task_id, linkid, path, interface_id, status, request_body, request_response, prompt, sdk_output, sdk_trace, callback_body, callback_response, callback_url, error_message, created_at, finished_at)
-       VALUES (@task_id, @linkid, @path, @interface_id, @status, @request_body, @request_response, @prompt, @sdk_output, @sdk_trace, @callback_body, @callback_response, @callback_url, @error_message, @created_at, @finished_at)`
+       (task_id, linkid, path, interface_id, status, request_body, request_response, prompt, sdk_output, sdk_trace, callback_body, callback_response, callback_url, error_message, created_at, finished_at, created_ts, finished_ts)
+       VALUES (@task_id, @linkid, @path, @interface_id, @status, @request_body, @request_response, @prompt, @sdk_output, @sdk_trace, @callback_body, @callback_response, @callback_url, @error_message, @created_at, @finished_at, @created_ts, @finished_ts)`
     ).run(log);
   },
   updateStatus(taskId: string, status: TaskStatus): void {
@@ -328,6 +376,10 @@ export const taskLogsStore = {
   updateResult(taskId: string, fields: Partial<TaskLog>): void {
     const sets: string[] = [];
     const vals: unknown[] = [];
+    // 设置 finished_at 时自动附带 finished_ts（如果调用方没显式传）
+    if (fields.finished_at !== undefined && fields.finished_ts === undefined) {
+      fields = { ...fields, finished_ts: nowTs() };
+    }
     for (const [k, v] of Object.entries(fields)) {
       if (v === undefined) continue;
       sets.push(`${k} = ?`);
@@ -342,6 +394,14 @@ export const taskLogsStore = {
   },
   list(limit = 100): TaskLog[] {
     return db.prepare('SELECT * FROM task_logs ORDER BY created_at DESC LIMIT ?').all(limit) as TaskLog[];
+  },
+  /** 分页列出任务日志（created_at DESC），返回当前页与总数 */
+  listPaged(offset: number, limit: number): { items: TaskLog[]; total: number } {
+    const total = (db.prepare('SELECT COUNT(*) AS c FROM task_logs').get() as { c: number }).c;
+    const items = db.prepare(
+      'SELECT * FROM task_logs ORDER BY created_at DESC LIMIT ? OFFSET ?'
+    ).all(limit, offset) as TaskLog[];
+    return { items, total };
   },
   countActive(): number {
     const row = db.prepare(
@@ -372,12 +432,12 @@ export const taskLogsStore = {
    * 返回清理的任务数。
    */
   deleteExpired(retentionDays: number): number {
-    const cutoff = new Date(Date.now() - retentionDays * 24 * 3600 * 1000).toISOString();
+    const cutoffMs = nowTs() - retentionDays * 24 * 3600 * 1000;
     const result = db.prepare(
       `DELETE FROM task_logs
-       WHERE created_at < ?
+       WHERE created_ts < ?
          AND status NOT IN ('pending', 'processing')`
-    ).run(cutoff);
+    ).run(cutoffMs);
     return result.changes;
   },
   /** 返回所有任务的 task_id 列表，用于清理对应的工作目录 */
@@ -404,6 +464,26 @@ export const taskLogsStore = {
     }
     return db.prepare('SELECT * FROM task_logs ORDER BY created_at DESC LIMIT ?').all(limit) as TaskLog[];
   },
+  /** 分页搜索（模糊匹配），返回当前页与总数 */
+  searchPaged(taskId: string, linkid: string, offset: number, limit: number): { items: TaskLog[]; total: number } {
+    const like = (s: string) => `%${s}%`;
+    const items: TaskLog[] = [];
+    let total = 0;
+    if (taskId && linkid) {
+      total = (db.prepare('SELECT COUNT(*) AS c FROM task_logs WHERE task_id LIKE ? AND linkid LIKE ?').get(like(taskId), like(linkid)) as { c: number }).c;
+      items.push(...db.prepare('SELECT * FROM task_logs WHERE task_id LIKE ? AND linkid LIKE ? ORDER BY created_at DESC LIMIT ? OFFSET ?').all(like(taskId), like(linkid), limit, offset) as TaskLog[]);
+    } else if (taskId) {
+      total = (db.prepare('SELECT COUNT(*) AS c FROM task_logs WHERE task_id LIKE ?').get(like(taskId)) as { c: number }).c;
+      items.push(...db.prepare('SELECT * FROM task_logs WHERE task_id LIKE ? ORDER BY created_at DESC LIMIT ? OFFSET ?').all(like(taskId), limit, offset) as TaskLog[]);
+    } else if (linkid) {
+      total = (db.prepare('SELECT COUNT(*) AS c FROM task_logs WHERE linkid LIKE ?').get(like(linkid)) as { c: number }).c;
+      items.push(...db.prepare('SELECT * FROM task_logs WHERE linkid LIKE ? ORDER BY created_at DESC LIMIT ? OFFSET ?').all(like(linkid), limit, offset) as TaskLog[]);
+    } else {
+      total = (db.prepare('SELECT COUNT(*) AS c FROM task_logs').get() as { c: number }).c;
+      items.push(...db.prepare('SELECT * FROM task_logs ORDER BY created_at DESC LIMIT ? OFFSET ?').all(limit, offset) as TaskLog[]);
+    }
+    return { items, total };
+  },
 };
 
 // ============================================================
@@ -422,22 +502,37 @@ export function comparePasswordSync(password: string, hash: string): boolean {
 // ============================================================
 export const usersStore = {
   get(username: string): User | undefined {
-    return db.prepare('SELECT * FROM users WHERE username = ?').get(username) as User | undefined;
+    return db.prepare(
+      'SELECT id, username, password_hash, role, note, COALESCE(must_change_pwd,0) AS must_change_pwd, COALESCE(user_version,1) AS user_version, COALESCE(created_at,\'\') AS created_at, created_ts FROM users WHERE username = ?'
+    ).get(username) as User | undefined;
   },
   list(): User[] {
-    return db.prepare('SELECT id, username, password_hash, role, note, COALESCE(must_change_pwd,0) AS must_change_pwd, COALESCE(created_at,\'\') AS created_at FROM users ORDER BY id').all() as User[];
+    return db.prepare(
+      'SELECT id, username, password_hash, role, note, COALESCE(must_change_pwd,0) AS must_change_pwd, COALESCE(user_version,1) AS user_version, COALESCE(created_at,\'\') AS created_at, created_ts FROM users ORDER BY id'
+    ).all() as User[];
   },
   updatePassword(username: string, hash: string): boolean {
-    return db.prepare('UPDATE users SET password_hash = ? WHERE username = ?').run(hash, username).changes > 0;
+    return db.prepare('UPDATE users SET password_hash = ?, user_version = user_version + 1 WHERE username = ?').run(hash, username).changes > 0;
   },
   clearMustChangePwd(username: string): boolean {
     return db.prepare('UPDATE users SET must_change_pwd = 0 WHERE username = ?').run(username).changes > 0;
   },
+  /** 递增 user_version 以作废该用户所有旧 token（登出时使用） */
+  incrementUserVersion(username: string): void {
+    db.prepare('UPDATE users SET user_version = user_version + 1 WHERE username = ?').run(username);
+  },
+  /** 获取 token 校验所需的全量版本快照: { username: user_version } */
+  getAllVersions(): Map<string, number> {
+    const rows = db.prepare('SELECT username, COALESCE(user_version,1) AS user_version FROM users').all() as Array<{ username: string; user_version: number }>;
+    const m = new Map<string, number>();
+    for (const r of rows) m.set(r.username, r.user_version);
+    return m;
+  },
   create(username: string, hash: string, role: number, note: string): boolean {
     try {
       db.prepare(
-        'INSERT INTO users (username, password_hash, role, note, must_change_pwd, created_at) VALUES (?, ?, ?, ?, 0, ?)'
-      ).run(username, hash, role, note, new Date().toISOString());
+        'INSERT INTO users (username, password_hash, role, note, must_change_pwd, user_version, created_at, created_ts) VALUES (?, ?, ?, ?, 0, 1, ?, ?)'
+      ).run(username, hash, role, note, nowReadable(), nowTs());
       return true;
     } catch {
       return false; // 用户名重复等

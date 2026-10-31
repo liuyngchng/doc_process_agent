@@ -1,13 +1,15 @@
 // ============================================================
-// 接口（path + 提示词模板）
+// 访问路径（path + 提示词模板）
 // ============================================================
 export interface AgentInterface {
   id: string;
   name: string;
   path: string;
   prompt: string;
-  created_at: string;
+  created_at: string;       // YYYY-MM-DD HH:MM:ss.SSS 本地时间
   updated_at: string;
+  created_ts: number | null; // Unix 毫秒时间戳（检索用）
+  updated_ts: number | null;
 }
 
 // ============================================================
@@ -16,7 +18,6 @@ export interface AgentInterface {
 export type TaskStatus =
   | 'pending'
   | 'processing'
-  | 'success'
   | 'failed'
   | 'completed'
   | 'callback_fail'
@@ -41,13 +42,15 @@ export interface TaskLog {
   callback_response: string | null;  // 对方对回调的响应
   callback_url: string;
   error_message: string | null;
-  created_at: string;
+  created_at: string;           // YYYY-MM-DD HH:MM:ss.SSS 本地时间
   finished_at: string | null;
+  created_ts: number | null;    // Unix 毫秒时间戳（检索用）
+  finished_ts: number | null;
 }
 
 /** SDK 流式输出中的一条可读记录，实时追加到 DB */
 export interface StreamEntry {
-  ts: string;          // HH:MM:ss.SSS
+  ts: string;          // YYYY-MM-DD HH:MM:ss.SSS
   type: 'text' | 'tool' | 'tool_result' | 'system' | 'error';
   text: string;        // 人类可读摘要
   // tool 相关附加字段
@@ -97,5 +100,7 @@ export interface User {
   role: number;          // 1 = admin, 0 = normal
   note: string;
   must_change_pwd: boolean;
+  user_version: number;  // 递增可使该用户所有旧 token 失效（改密/登出时 +1）
   created_at: string;
+  created_ts: number | null; // Unix 毫秒时间戳（检索用）
 }

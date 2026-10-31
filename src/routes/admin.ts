@@ -6,6 +6,7 @@ import { v4 as uuid } from 'uuid';
 import { interfacesStore, taskLogsStore, configStore, usersStore, hashPasswordSync } from '../store.js';
 import { enqueue } from '../services/task-queue.js';
 import { getLogger } from '../logger.js';
+import { nowReadable } from '../time.js';
 import { getCurrentUser, adminOnlyMiddleware, validatePasswordStrength } from './auth.js';
 import type { Config } from '../config.js';
 import type { ProcessRequest } from '../types.js';
@@ -47,7 +48,7 @@ export function createAdminRouter(cfg: Config): Router {
   // 以下仅管理员
   // ============================================================
 
-  // ---- 接口管理 ----
+  // ---- 访问路径管理 ----
   router.use('/admin/interfaces', adminOnlyMiddleware);
   router.use('/admin/mock', adminOnlyMiddleware);
   router.use('/admin/simulate', adminOnlyMiddleware);
@@ -64,7 +65,7 @@ export function createAdminRouter(cfg: Config): Router {
   router.get('/admin/interfaces/:id', (req: Request, res: Response) => {
     const iface = interfacesStore.get(req.params.id);
     if (!iface) {
-      res.status(404).json({ code: 1001, message: '接口不存在' });
+      res.status(404).json({ code: 1001, message: '访问路径不存在' });
       return;
     }
     res.json({ code: 0, data: iface });
@@ -80,7 +81,7 @@ export function createAdminRouter(cfg: Config): Router {
 
     const existing = interfacesStore.getByPath(path);
     if (existing) {
-      res.status(400).json({ code: 1001, message: '接口 path 已存在: ' + path });
+      res.status(400).json({ code: 1001, message: '访问路径 path 已存在: ' + path });
       return;
     }
 
@@ -99,7 +100,7 @@ export function createAdminRouter(cfg: Config): Router {
 
     const updated = interfacesStore.update(req.params.id, name, path, prompt);
     if (!updated) {
-      res.status(404).json({ code: 1001, message: '接口不存在' });
+      res.status(404).json({ code: 1001, message: '访问路径不存在' });
       return;
     }
 
@@ -111,7 +112,7 @@ export function createAdminRouter(cfg: Config): Router {
   router.delete('/admin/interfaces/:id', (req: Request, res: Response) => {
     const ok = interfacesStore.remove(req.params.id);
     if (!ok) {
-      res.status(404).json({ code: 1001, message: '接口不存在' });
+      res.status(404).json({ code: 1001, message: '访问路径不存在' });
       return;
     }
     log.info({ id: req.params.id }, 'interface_deleted');
@@ -154,7 +155,7 @@ export function createAdminRouter(cfg: Config): Router {
 
     const iface = interfacesStore.getByPath(interface_path);
     if (!iface) {
-      const resp = { code: 1001, timestamp: nowStr(), message: '接口不存在: ' + interface_path };
+      const resp = { code: 1001, timestamp: nowStr(), message: '访问路径不存在: ' + interface_path };
       log.warn({ request: req.body, response: resp }, 'simulate_interface_not_found');
       res.status(404).json(resp);
       return;
@@ -195,19 +196,25 @@ export function createAdminRouter(cfg: Config): Router {
   // ---- 任务监控 ----
 
   router.get('/admin/tasks', (req: Request, res: Response) => {
-    const limit = Math.min(parseInt(String(req.query.limit), 10) || 100, 500);
-    const list = taskLogsStore.list(limit);
-    res.json({ code: 0, data: list.map((t) => ({
-      task_id: t.task_id,
-      linkid: t.linkid,
-      title: extractTitle(t.request_body),
-      path: t.path,
-      status: t.status,
-      callback_url: t.callback_url,
-      error_message: t.error_message,
-      created_at: t.created_at,
-      finished_at: t.finished_at,
-    })) });
+    const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
+    const pageSize = Math.min(parseInt(String(req.query.page_size), 10) || 10, 100);
+    const { items, total } = taskLogsStore.listPaged((page - 1) * pageSize, pageSize);
+    res.json({ code: 0, data: {
+      total,
+      page,
+      page_size: pageSize,
+      items: items.map((t) => ({
+        task_id: t.task_id,
+        linkid: t.linkid,
+        title: extractTitle(t.request_body),
+        path: t.path,
+        status: t.status,
+        callback_url: t.callback_url,
+        error_message: t.error_message,
+        created_at: t.created_at,
+        finished_at: t.finished_at,
+      })),
+    } });
   });
 
   router.get('/admin/tasks/:task_id', (req: Request, res: Response) => {
@@ -246,19 +253,25 @@ export function createAdminRouter(cfg: Config): Router {
   router.get('/admin/audit', (req: Request, res: Response) => {
     const taskId = typeof req.query.task_id === 'string' ? req.query.task_id.trim() : '';
     const linkid = typeof req.query.linkid === 'string' ? req.query.linkid.trim() : '';
-    const limit = Math.min(parseInt(String(req.query.limit), 10) || 10, 100);
-    const list = taskLogsStore.search(taskId, linkid, limit);
+    const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
+    const pageSize = Math.min(parseInt(String(req.query.page_size), 10) || 10, 100);
+    const { items, total } = taskLogsStore.searchPaged(taskId, linkid, (page - 1) * pageSize, pageSize);
     res.json({
       code: 0,
-      data: list.map((t) => ({
-        task_id: t.task_id,
-        linkid: t.linkid,
-        title: extractTitle(t.request_body),
-        path: t.path,
-        status: t.status,
-        created_at: t.created_at,
-        finished_at: t.finished_at,
-      })),
+      data: {
+        total,
+        page,
+        page_size: pageSize,
+        items: items.map((t) => ({
+          task_id: t.task_id,
+          linkid: t.linkid,
+          title: extractTitle(t.request_body),
+          path: t.path,
+          status: t.status,
+          created_at: t.created_at,
+          finished_at: t.finished_at,
+        })),
+      },
     });
   });
 
@@ -437,5 +450,5 @@ function detectPrimaryIp(): string {
 }
 
 function nowStr(): string {
-  return new Date().toISOString().replace('T', ' ').slice(0, 19);
+  return nowReadable();
 }

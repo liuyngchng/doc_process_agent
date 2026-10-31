@@ -48,16 +48,19 @@ interface TokenPayload {
   uid: number;
   uname: string;
   role: number;
+  /** 签发时的 user_version，校验时与 DB 当前值比对，不匹配则 token 失效 */
+  uv: number;
   exp: number;
   salt: string;
 }
 
-function signToken(userId: number, username: string, role: number, secret: Buffer, temporary: boolean): string {
+function signToken(userId: number, username: string, role: number, userVersion: number, secret: Buffer, temporary: boolean): string {
   const ttl = temporary ? SHORT_TTL : LONG_TTL;
   const payload: TokenPayload = {
     uid: userId,
     uname: username,
     role,
+    uv: userVersion,
     exp: Math.floor(Date.now() / 1000) + ttl,
     salt: randomBytes(6).toString('hex'),
   };
@@ -86,6 +89,11 @@ function verifyToken(token: string, secret: Buffer): TokenPayload | null {
   }
 
   if (Date.now() / 1000 > payload.exp) return null;
+
+  // 校验 user_version：与 DB 当前值比对，不匹配则 token 已被改密/登出作废
+  const user = usersStore.get(payload.uname);
+  if (!user || user.user_version !== payload.uv) return null;
+
   return payload;
 }
 
@@ -162,7 +170,7 @@ export function adminOnlyMiddleware(req: Request, res: Response, next: () => voi
 }
 
 /**
- * 对外接口鉴权中间件。
+ * 对外访问路径鉴权中间件。
  * 后台 UI（系统设置）优先，cfg.yml 静态 token 作为 fallback。
  * 两种认证方式：
  *   1. X-Api-Key: {token}
@@ -260,8 +268,11 @@ export function createAuthRouter(): Router {
 
     // admin 首次登录：2h 内未修改则初始密码失效
     if (user.must_change_pwd) {
-      const created = new Date(user.created_at).getTime() / 1000;
-      if (Date.now() / 1000 - created > MUST_CHANGE_PWD_WINDOW) {
+      // 优先用 created_ts（Unix 毫秒），否则回退解析 created_at
+      const createdSec = user.created_ts
+        ? user.created_ts / 1000
+        : new Date(user.created_at).getTime() / 1000;
+      if (Date.now() / 1000 - createdSec > MUST_CHANGE_PWD_WINDOW) {
         log.warn({ username: user_name }, 'auth_must_change_pwd_expired');
         res.status(403).json({ error: '初始密码已过期（2小时内未修改），请联系管理员重置' });
         return;
@@ -269,7 +280,7 @@ export function createAuthRouter(): Router {
     }
 
     const { secret, temporary } = getOrCreateSecret();
-    const token = signToken(user.id, user.username, user.role, secret, temporary);
+    const token = signToken(user.id, user.username, user.role, user.user_version, secret, temporary);
 
     // Set httpOnly cookie
     const ttl = temporary ? SHORT_TTL : LONG_TTL;
@@ -290,10 +301,21 @@ export function createAuthRouter(): Router {
     });
   });
 
-  // POST /api/logout
-  router.post('/api/logout', (_req: Request, res: Response) => {
+  // POST /api/logout — 递增 user_version 使所有旧 token 失效
+  router.post('/api/logout', (req: Request, res: Response) => {
+    const tokenPayload = getUserFromCookie(req) || getUserFromBearer(req);
+    if (tokenPayload) {
+      usersStore.incrementUserVersion(tokenPayload.uname);
+      log.info({ user: tokenPayload.uname }, 'user_logout_and_tokens_invalidated');
+    }
     res.clearCookie('auth_token', { path: '/' });
     res.json({ status: 'ok' });
+  });
+
+  // GET /api/inner/whoami — 前端探活，无副作用
+  router.get('/api/inner/whoami', authApiMiddleware, (req: Request, res: Response) => {
+    const cu = getCurrentUser(req);
+    res.json({ code: 0, data: { id: cu!.uid, username: cu!.uname, role: cu!.role } });
   });
 
   // PUT /api/inner/user/password — 修改密码

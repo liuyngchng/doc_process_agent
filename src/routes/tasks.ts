@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { taskLogsStore } from '../store.js';
 import { getLogger } from '../logger.js';
+import { nowReadable } from '../time.js';
 import type { TaskLog, StreamEntry } from '../types.js';
 
 const log = getLogger();
@@ -51,7 +52,7 @@ export function createTasksRouter(): Router {
 
     taskLogsStore.updateStatus(task_id, 'cancelled');
     taskLogsStore.appendStream(task_id, [{
-      ts: new Date().toISOString().slice(11, 23),
+      ts: nowReadable(),
       type: 'system',
       text: '外部系统通过 API 取消了该任务（DELETE /api/v1/tasks/' + task_id + '，来自 ' + fromIp + '）',
     }]);
@@ -203,7 +204,7 @@ function buildTimelineEvents(task: TaskLog, stream: StreamEntry[]): TimelineEven
     time: task.created_at,
     type: 'create',
     title: '任务创建',
-    detail: '接口: ' + (task.path || '-'),
+    detail: '访问路径: ' + (task.path || '-'),
   });
 
   // 2. 收到请求数据
@@ -283,14 +284,9 @@ function buildTimelineEvents(task: TaskLog, stream: StreamEntry[]): TimelineEven
   }
 
   // 8. 完成 / 失败
-  const finalTitle =
-    task.status === 'completed' || task.status === 'success' ? '任务完成' :
-    task.status === 'failed' ? '任务失败' :
-    task.status === 'callback_fail' ? '回调失败' :
-    task.status === 'cancelled' ? '任务已取消' :
-    '状态: ' + task.status;
+  const finalTitle = statusText(task.status);
   const finalType =
-    task.status === 'completed' || task.status === 'success' ? 'done' :
+    task.status === 'completed' ? 'done' :
     task.status === 'failed' || task.status === 'callback_fail' ? 'error' :
     'info';
   events.push({
@@ -308,7 +304,7 @@ function buildTimelineEvents(task: TaskLog, stream: StreamEntry[]): TimelineEven
 // ============================================================
 
 function renderTimelineHtml(task: TaskLog, events: TimelineEvent[], linkid: string): string {
-  const itemsHtml = events.map(ev => {
+  const itemsHtml = events.map((ev, i) => {
     const timeStr = ev.time ? fmtTs(ev.time) : '';
     const icon = ev.type === 'callback' ? '📤' :
       ev.type === 'tool' ? '🔧' :
@@ -325,14 +321,14 @@ function renderTimelineHtml(task: TaskLog, events: TimelineEvent[], linkid: stri
     return `<div class="item ${ev.type}">
         <div class="dot">${icon}</div>
         <div class="body">
-          <div class="ihead"><span class="time">${escHtml(timeStr)}</span><strong>${escHtml(ev.title)}</strong></div>
+          <div class="ihead"><span class="time">${escHtml(timeStr)}</span><strong>${i + 1}. ${escHtml(ev.title)}</strong></div>
           ${detailBlock}
         </div>
       </div>`;
   }).join('\n');
 
   return htmlPage(
-    '数据处理时间线 — ' + escHtml(linkid || task.task_id?.substring(0, 8) || ''),
+    '任务时间线 — ' + escHtml(linkid || task.task_id?.substring(0, 8) || ''),
     task.task_id,
     linkid || task.task_id?.substring(0, 8) || '',
     task.path || '-',
@@ -373,17 +369,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans S
 .tl{padding:28px 36px}
 .item{display:flex;gap:14px;padding:14px 0;border-left:2px solid #e0e0e0;margin-left:8px;position:relative}
 .item:last-child{border-left-color:transparent}
-.dot{width:28px;height:28px;border-radius:50%;background:#667eea;flex-shrink:0;margin-left:-15px;display:flex;align-items:center;justify-content:center;font-size:.85rem;position:relative;z-index:1}
+.dot{width:28px;height:28px;border-radius:50%;background:#4b6cb7;flex-shrink:0;margin-left:-15px;display:flex;align-items:center;justify-content:center;font-size:.85rem;position:relative;z-index:1}
 .item.error .dot{background:#e53e3e}
-.item.done .dot{background:#38a169}
-.item.callback .dot{background:#3182ce}
-.item.create .dot{background:#805ad5}
-.item.prompt .dot{background:#d69e2e}
-.item.output .dot{background:#319795}
-.item.input .dot{background:#dd6b20}
-.item.tool .dot{background:#2b6cb0}
-.item.tool_result .dot{background:#718096}
-.item.system .dot{background:#a0aec0}
 .body{flex:1;min-width:0}
 .ihead{display:flex;flex-wrap:wrap;align-items:center;gap:10px;font-size:.92rem}
 .time{font-family:monospace;font-size:.78rem;color:#888;white-space:nowrap}
@@ -394,12 +381,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans S
 <body>
 <div class="wrap">
   <div class="page-head">
-    <h1>&#129302; 数据处理时间线</h1>
+    <h1>&#129302; 任务时间线</h1>
     <div class="meta">
       <span>LinkID: ${escHtml(linkid)}</span>
       <span>Task ID: ${escHtml(taskId?.substring(0, 18) || '-')}...</span>
-      <span>接口: ${escHtml(path)}</span>
-      <span class="badge">${escHtml(status)}</span>
+      <span>访问路径: ${escHtml(path)}</span>
+      <span>${escHtml(statusText(status))}</span>
       <span>${fmtTs(createdAt)} ~ ${fmtTs(finishedAt)}</span>
     </div>
   </div>
@@ -427,7 +414,19 @@ function jsonFmt(v: unknown): string {
 }
 
 function now(): string {
-  return new Date().toISOString().replace('T', ' ').slice(0, 19);
+  return nowReadable();
+}
+
+function statusText(s: string): string {
+  const map: Record<string, string> = {
+    pending: '排队中',
+    processing: '处理中',
+    failed: '失败',
+    completed: '已完成',
+    callback_fail: '回调失败',
+    cancelled: '已取消',
+  };
+  return map[s] || s || '-';
 }
 
 function escHtml(s: string | null): string {
@@ -437,11 +436,13 @@ function escHtml(s: string | null): string {
 
 function fmtTs(s: string | null): string {
   if (!s) return '-';
-  if (/^\d{2}:\d{2}:\d{2}/.test(s)) return s; // HH:MM:ss.SSS
+  // 已是 YYYY-MM-DD HH:MM:ss(.SSS) 或旧的 HH:MM:ss.SSS 则原样返回；ISO(含 T/Z) 走转换
+  if (/^\d{2}:\d{2}:\d{2}/.test(s) || /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(s)) return s;
   try {
     const d = new Date(s);
+    if (isNaN(d.getTime())) return s;
     const p = (n: number) => String(n).padStart(2, '0');
-    return d.getFullYear() + '/' + p(d.getMonth() + 1) + '/' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()) + '.' + String(d.getMilliseconds()).padStart(3, '0');
   } catch {
     return s;
   }

@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { interfacesStore, taskLogsStore } from '../store.js';
 import { enqueue, getRunningCount, getPendingCount } from '../services/task-queue.js';
 import { getLogger } from '../logger.js';
+import { nowReadable } from '../time.js';
 import type { ProcessRequest } from '../types.js';
 import type { Config } from '../config.js';
 
@@ -19,16 +20,16 @@ export function createProcessRouter(cfg: Config): Router {
     log.debug({ from_ip: fromIp, path: interfacePath, body: req.body }, 'request_received');
 
     if (!interfacePath) {
-      const resp = buildResponse(1001, '缺少接口路径', '', '');
+      const resp = buildResponse(1001, '缺少访问路径', '', '');
       log.warn({ from_ip: fromIp, request: req.body, response: resp }, 'request_missing_path');
       res.status(404).json(resp);
       return;
     }
 
-    // 查找接口定义
+    // 查找访问路径定义
     const iface = interfacesStore.getByPath(interfacePath);
     if (!iface) {
-      const resp = buildResponse(1001, '接口不存在: ' + interfacePath, '', '');
+      const resp = buildResponse(1001, '访问路径不存在: ' + interfacePath, '', '');
       log.warn({ from_ip: fromIp, path: interfacePath, request: req.body, response: resp }, 'request_interface_not_found');
       res.status(404).json(resp);
       return;
@@ -82,7 +83,7 @@ export function createProcessRouter(cfg: Config): Router {
 function buildResponse(code: number, message: string, taskId: string, linkid: string) {
   const resp: Record<string, unknown> = {
     code,
-    timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
+    timestamp: nowReadable(),
     message,
   };
   // 校验失败时无 task_id / linkid，不输出空字段；成功时才带 task_id

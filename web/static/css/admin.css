@@ -782,7 +782,6 @@ header p {
     align-items: center;
     gap: 8px;
     margin-bottom: 6px;
-    user-select: none;
 }
 .timeline-header:hover { color: #4b6cb7; }
 .timeline-header strong {

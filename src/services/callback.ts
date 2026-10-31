@@ -8,15 +8,15 @@ import http from 'node:http';
 import https from 'node:https';
 import { URL } from 'node:url';
 import { getLogger } from '../logger.js';
+import { fmtLocalTs } from '../time.js';
 import type { Config } from '../config.js';
 import type { ApiResponse, StreamEntry } from '../types.js';
 
 const log = getLogger();
 
-/** 生成 HH:MM:ss.SSS 时间戳 */
+/** 生成 YYYY-MM-DD HH:MM:ss.SSS 时间戳 */
 function ts(): string {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}.${String(d.getMilliseconds()).padStart(3,'0')}`;
+  return fmtLocalTs(Date.now());
 }
 
 export interface CallbackResult {

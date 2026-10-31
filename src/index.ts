@@ -6,6 +6,7 @@ import cookieParser from 'cookie-parser';
 import { loadConfig, ensureDirs } from './config.js';
 import { initLogger, getLogger } from './logger.js';
 import { initStore, taskLogsStore, configStore } from './store.js';
+import { nowReadable } from './time.js';
 import { initTaskQueue } from './services/task-queue.js';
 import { createProcessRouter } from './routes/process.js';
 import { createHealthRouter } from './routes/health.js';
@@ -97,7 +98,7 @@ app.get('/api/info', (_req, res) => {
 // 静态资源（公开，登录页也需要）
 app.use('/static', express.static('web/static'));
 
-// 对外业务接口（外部系统调用，Bearer Token 鉴权）
+// 对外业务访问路径（外部系统调用，Bearer Token 鉴权）
 app.use('/api/v1', apiTokenMiddleware(cfg.sys.api_token));
 app.use(createProcessRouter(cfg));
 
@@ -112,7 +113,7 @@ app.use((err: any, req: any, res: any, _next: any) => {
     rawBody: req.rawBody ?? '(无原始请求体)',
     error: err?.message ?? String(err),
   }, 'request_body_parse_error');
-  res.status(400).json({ code: 1001, timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19), message: '请求体不是合法 JSON' });
+  res.status(400).json({ code: 1001, timestamp: nowReadable(), message: '请求体不是合法 JSON' });
 });
 
 // Dev null — 用于调试接收请求

@@ -20,16 +20,16 @@
         <nav class="cfg-sidebar" id="cfgSidebar"></nav>
 
         <div class="cfg-content">
-            <!-- ========== 接口管理 ========== -->
+            <!-- ========== 访问路径管理 ========== -->
             <div class="cfg-section" id="section-interfaces">
                 <h2><i class="fas fa-brain"></i> 模板管理</h2>
-                <p>每个接口 = 一个对外 path + 一段提示词模板。调用方 POST /api/v1/&lt;path&gt; 时按 path 匹配模板。</p>
+                <p>每个访问路径 = 一个对外 path + 一段提示词模板。调用方 POST /api/v1/&lt;path&gt; 时按 path 匹配模板。</p>
                 <button class="cfg-btn cfg-btn-save" onclick="editInterface()" style="margin-bottom:16px;">
                     <i class="fas fa-plus"></i> 创建模板
                 </button>
                 <table class="result-table">
-                    <thead><tr><th>功能</th><th>访问路径</th><th>更新时间</th><th>操作</th></tr></thead>
-                    <tbody id="ifacesTbody"><tr><td colspan="4" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
+                    <thead><tr><th>#</th><th>功能</th><th>访问路径</th><th>更新时间</th><th>操作</th></tr></thead>
+                    <tbody id="ifacesTbody"><tr><td colspan="5" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
                 </table>
 
                 <div id="ifaceModal" class="modal-overlay">
@@ -95,9 +95,10 @@
             <div class="cfg-section" id="section-tasks">
                 <h2><i class="fas fa-list-alt"></i> 任务监控</h2>
                 <table class="result-table">
-                    <thead><tr><th>Task ID</th><th>LinkID</th><th>标题</th><th>Path</th><th>状态</th><th>创建时间</th><th>完成时间</th><th class="col-action">执行过程</th><th class="col-action">执行结果</th></tr></thead>
-                    <tbody id="tasksTbody"><tr><td colspan="9" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
+                    <thead><tr><th>#</th><th>Task ID</th><th>LinkID</th><th>标题</th><th>访问路径</th><th>状态</th><th>创建时间</th><th>完成时间</th><th class="col-action">执行过程</th><th class="col-action">执行结果</th></tr></thead>
+                    <tbody id="tasksTbody"><tr><td colspan="10" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
                 </table>
+                <div id="tasksPager" class="pager" style="margin-top:16px;display:flex;align-items:center;justify-content:center;gap:12px;"></div>
 
                 <!-- 执行过程 — 终端风格弹窗 -->
                 <div id="streamModal" class="modal-overlay">
@@ -146,14 +147,15 @@
                     </div>
 
                     <table class="result-table">
-                        <thead><tr><th>标题</th><th>Task ID</th><th>Link ID</th><th>Path</th><th>状态</th><th>创建时间</th><th>完成时间</th><th class="col-action">详情</th></tr></thead>
-                        <tbody id="auditTbody"><tr><td colspan="8" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
+                        <thead><tr><th>#</th><th>标题</th><th>Task ID</th><th>Link ID</th><th>访问路径</th><th>状态</th><th>创建时间</th><th>完成时间</th><th class="col-action">详情</th></tr></thead>
+                        <tbody id="auditTbody"><tr><td colspan="9" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
                     </table>
+                    <div id="auditPager" class="pager" style="margin-top:16px;display:flex;align-items:center;justify-content:center;gap:12px;"></div>
 
                     <!-- 时间线详情弹窗 -->
                     <div id="auditDetailModal" class="modal-overlay">
                         <div class="modal-lg" style="width:min(1280px, calc(100vw - 40px));">
-                            <h3><i class="fas fa-history"></i> 数据处理时间线</h3>
+                            <h3><i class="fas fa-history"></i> 任务时间线</h3>
                             <div id="auditDetailContent" style="margin-top:20px;"></div>
                             <div class="modal-actions">
                                 <button type="button" class="cfg-btn cfg-btn-primary" onclick="exportAuditMd()"><i class="fas fa-download"></i> 导出 HTML</button>
@@ -219,8 +221,8 @@
                         </button>
                     </div>
                     <table class="result-table">
-                        <thead><tr><th>用户名</th><th>角色</th><th>备注</th><th>操作</th></tr></thead>
-                        <tbody id="usersTbody"><tr><td colspan="4" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
+                        <thead><tr><th>#</th><th>用户名</th><th>角色</th><th>备注</th><th>操作</th></tr></thead>
+                        <tbody id="usersTbody"><tr><td colspan="5" style="text-align:center;color:#999;">加载中...</td></tr></tbody>
                     </table>
                 </div>
             </div>
@@ -232,6 +234,48 @@
 
 <script>
 const API = '/admin';
+
+// ============================================================
+// 全局 fetch 包装：统一处理 401 未登录 → 跳转登录页
+// ============================================================
+const _nativeFetch = window.fetch.bind(window);
+window.fetch = async function(...args) {
+    try {
+        const resp = await _nativeFetch(...args);
+        if (resp.status === 401) {
+            redirectToLogin();
+            throw new Error('未登录或登录已过期');
+        }
+        return resp;
+    } catch (err) {
+        // 网络错误也走这里，但登录页本身除外
+        if (err && err.message === '未登录或登录已过期') throw err;
+        throw err;
+    }
+};
+
+let _loginRedirecting = false;
+function redirectToLogin() {
+    if (_loginRedirecting) return;
+    _loginRedirecting = true;
+    window.location.href = '/login';
+}
+
+// ============================================================
+// 闲置超时自动登出（默认 30 分钟无操作）
+// ============================================================
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+let _idleTimer = null;
+function resetIdleTimer() {
+    if (_idleTimer) clearTimeout(_idleTimer);
+    _idleTimer = setTimeout(() => {
+        doLogout();
+    }, IDLE_TIMEOUT_MS);
+}
+['click', 'keydown', 'mousemove', 'scroll', 'touchstart'].forEach(evt =>
+    document.addEventListener(evt, resetIdleTimer, { passive: true })
+);
+resetIdleTimer();
 
 // ==== 根据后端 nav 渲染侧边栏 + 绑定事件 ====
 async function initNav() {
@@ -294,15 +338,16 @@ async function loadInterfaces() {
     const list = Array.isArray(json.data) ? json.data : [];
     const tbody = document.getElementById('ifacesTbody');
     if (list.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999;padding:24px;">暂无提示词，点击"创建模板"开始</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;padding:24px;">暂无提示词，点击"创建模板"开始</td></tr>';
         return;
     }
-    tbody.innerHTML = list.map(i => {
+    tbody.innerHTML = list.map((i, idx) => {
         const id = JSON.stringify(i.id);
         const name = escHtml(i.name);
         const path = escHtml(i.path);
         const ts = fmtTs(i.updated_at);
         return `<tr>
+            <td>${idx + 1}</td>
             <td>${name}</td>
             <td><span class="path-mono">${path}</span></td>
             <td>${ts}</td>
@@ -338,7 +383,7 @@ document.getElementById('ifaceForm').addEventListener('submit', async (e) => {
     const body = await res.json();
     if (body.code !== 0) return toast('保存失败: ' + (body.message || ''), 'error');
     closeModal();
-    toast(id ? '接口已更新' : '接口已创建');
+    toast(id ? '访问路径已更新' : '访问路径已创建');
     loadInterfaces();
 });
 
@@ -349,32 +394,50 @@ async function deleteInterface(id, name) {
     else toast('删除失败', 'error');
 }
 
-// ==== Tasks ====
-async function loadTasks() {
-    const res = await fetch(API + '/tasks?limit=100');
+// ==== Tasks (server-side pagination) ====
+const TASKS_PAGE_SIZE = 10;
+let _tasksPage = 1;
+let _tasksTotal = 0;
+
+async function loadTasks(page = 1) {
+    _tasksPage = page;
+    const res = await fetch(API + '/tasks?page=' + page + '&page_size=' + TASKS_PAGE_SIZE);
     const json = await res.json();
-    const list = Array.isArray(json.data) ? json.data : [];
+    const data = json.data || {};
+    const list = Array.isArray(data.items) ? data.items : [];
+    _tasksTotal = data.total || 0;
+    renderTasksPage(list);
+}
+
+function renderTasksPage(list) {
+    const total = _tasksTotal;
+    const totalPages = Math.max(1, Math.ceil(total / TASKS_PAGE_SIZE));
     const tbody = document.getElementById('tasksTbody');
-    if (list.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;padding:24px;">暂无任务</td></tr>';
+    if (total === 0) {
+        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#999;padding:24px;">暂无任务</td></tr>';
+        document.getElementById('tasksPager').innerHTML = '';
         return;
     }
-    tbody.innerHTML = list.map(t => {
+    const start = (_tasksPage - 1) * TASKS_PAGE_SIZE;
+    tbody.innerHTML = list.map((t, i) => {
+        const no = start + i + 1;
         const taskId = escHtml(t.task_id);
         const title = t.title || '-';
         const titleDisplay = title.length > 15 ? escHtml(title.substring(0, 15)) + '...' : escHtml(title);
         return `<tr>
+            <td>${no}</td>
             <td style="font-family:monospace;font-size:0.8rem;">${taskId.substring(0, 18)}...</td>
             <td>${escHtml(t.linkid || '-')}</td>
             <td><span title="${escHtml(title)}" style="cursor:default;">${titleDisplay}</span></td>
             <td><span class="path-mono">${escHtml(t.path || '-')}</span></td>
-            <td><span class="badge badge-${statusBadgeClass(t.status)}">${t.status}</span></td>
+            <td>${statusText(t.status)}</td>
             <td>${fmtTs(t.created_at)}</td>
             <td>${fmtTs(t.finished_at)}</td>
             <td class="col-action"><button class="cfg-btn-sm cfg-btn-icon" onclick="viewStream('${taskId}')" title="执行过程"><i class="fas fa-comments"></i></button></td>
             <td class="col-action"><button class="cfg-btn-sm cfg-btn-icon" onclick="viewTask('${taskId}')" title="执行结果"><i class="fas fa-clipboard-check"></i></button></td>
         </tr>`;
     }).join('');
+    document.getElementById('tasksPager').innerHTML = pagerHtml(_tasksPage, totalPages, 'loadTasks');
 }
 
 async function viewTask(taskId) {
@@ -389,29 +452,30 @@ async function viewTask(taskId) {
 }
 
 function taskDetailHtml(t) {
+    let step = 0;
     return `
         <table class="kv-table">
             <tr><td class="kv-key">Task ID</td><td style="font-family:monospace;">${escHtml(t.task_id)}</td></tr>
             <tr><td class="kv-key">LinkID</td><td>${escHtml(t.linkid || '-')}</td></tr>
-            <tr><td class="kv-key">Path</td><td><span class="path-mono">${escHtml(t.path || '-')}</span></td></tr>
-            <tr><td class="kv-key">状态</td><td><span class="badge badge-${statusBadgeClass(t.status)}">${t.status}</span></td></tr>
+            <tr><td class="kv-key">访问路径</td><td><span class="path-mono">${escHtml(t.path || '-')}</span></td></tr>
+            <tr><td class="kv-key">状态</td><td>${statusText(t.status)}</td></tr>
             <tr><td class="kv-key">创建时间</td><td>${fmtTs(t.created_at)}</td></tr>
             <tr><td class="kv-key">完成时间</td><td>${fmtTs(t.finished_at)}</td></tr>
             <tr><td class="kv-key">错误信息</td><td>${escHtml(t.error_message || '(无)')}</td></tr>
         </table>
-        <div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> 请求体 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>
+        <div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> 第${++step}步 请求体 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>
         <div class="task-detail-json" style="display:none;">${escHtml(jsonFmt(t.request_body))}</div>
-        <div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-left"></i> 请求体返回 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>
+        <div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-left"></i> 第${++step}步 请求体返回 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>
         <div class="task-detail-json" style="display:none;">${escHtml(jsonFmt(t.request_response))}</div>
-        <div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> 提示词 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>
+        <div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> 第${++step}步 提示词 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>
         <div class="task-detail-json" style="display:none;">${escHtml(t.prompt || '(未记录)')}</div>
-        <div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> Agent 输出 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>
+        <div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> 第${++step}步 Agent 输出 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>
         <div class="task-detail-json" style="display:none;">${escHtml(t.sdk_output || '(未记录)')}</div>
-        <div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> SDK 调用追踪 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>
+        <div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> 第${++step}步 SDK 调用追踪 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>
         <div class="task-detail-json" style="display:none;">${escHtml(jsonFmt(t.sdk_trace))}</div>
-        <div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> 回调体 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>
+        <div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-right"></i> 第${++step}步 回调体 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>
         <div class="task-detail-json" style="display:none;">${escHtml(jsonFmt(t.callback_body))}</div>
-        <div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-left"></i> 回调体返回 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>
+        <div class="kv-section" onclick="toggleTaskDetail(this)" style="cursor:pointer;"><i class="fas fa-arrow-left"></i> 第${++step}步 回调体返回 <i class="fas fa-chevron-right task-detail-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>
         <div class="task-detail-json" style="display:none;">${escHtml(jsonFmt(t.callback_response))}</div>
     `;
 }
@@ -467,15 +531,15 @@ async function pollStream() {
         // 更新状态栏
         const statusEl = document.getElementById('streamStatus');
         if (status === 'processing') {
-            statusEl.innerHTML = '<span class="badge badge-processing"><i class="fas fa-spinner fa-spin"></i> 执行中...</span>';
+            statusEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 执行中...';
             statusEl.className = 'stream-status-bar stream-status-live';
-        } else if (status === 'success' || status === 'completed') {
-            statusEl.innerHTML = '<span class="badge badge-completed"><i class="fas fa-check-circle"></i> 执行完成</span>';
+        } else if (status === 'completed') {
+            statusEl.innerHTML = '<i class="fas fa-check-circle"></i> 执行完成';
             statusEl.className = 'stream-status-bar stream-status-done';
             clearInterval(_streamPollTimer);
             _streamPollTimer = null;
         } else if (status === 'failed' || status === 'callback_fail') {
-            statusEl.innerHTML = '<span class="badge badge-failed"><i class="fas fa-times-circle"></i> 执行失败</span>';
+            statusEl.innerHTML = '<i class="fas fa-times-circle"></i> 执行失败';
             statusEl.className = 'stream-status-bar stream-status-done';
             clearInterval(_streamPollTimer);
             _streamPollTimer = null;
@@ -623,21 +687,20 @@ document.getElementById('simSubmit').addEventListener('click', async () => {
 
 // ==== Utilities ====
 function escHtml(s) { if (!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function fmtTs(s) { if (!s) return '-'; try { return new Date(s).toLocaleString('zh-CN'); } catch { return s; } }
-/** 时间线用：纯时间格式（HH:MM:ss.SSS）直接显示，完整 ISO 日期则转换 */
-function fmtTimelineTs(s) { if (!s) return ''; if (/^\d{2}:\d{2}:\d{2}/.test(s)) return s; try { const d = new Date(s); const p = (n) => String(n).padStart(2,'0'); return d.getFullYear() + '/' + p(d.getMonth()+1) + '/' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); } catch { return s; } }
+function fmtTs(s) { if (!s) return '-'; /* 数据库 created_at / finished_at 为 ISO，格式化为秒 */ try { const d = new Date(s); if (isNaN(d.getTime())) return s; const p = (n) => String(n).padStart(2,'0'); return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); } catch { return s; } }
+/** 时间线用：保留毫秒。已格式化的时间直接返回，否则从 ISO 转换 */
+function fmtTimelineTs(s) { if (!s) return ''; if (/^\d{2}:\d{2}:\d{2}/.test(s)) return s; /* 旧 HH:MM:ss.SSS */ if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(s)) return s; /* 已是 YYYY-MM-DD HH:MM:ss(.SSS) */ try { const d = new Date(s); if (isNaN(d.getTime())) return s; const p = (n) => String(n).padStart(2,'0'); return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()) + '.' + String(d.getMilliseconds()).padStart(3,'0'); } catch { return s; } }
 function jsonFmt(v) { if (typeof v === 'string') try { return JSON.stringify(JSON.parse(v), null, 2); } catch { return v; } return JSON.stringify(v, null, 2); }
-function statusBadgeClass(s) {
-    switch (s) {
-        case 'pending': return 'pending';
-        case 'processing': return 'processing';
-        case 'success':
-        case 'completed': return 'completed';
-        case 'failed':
-        case 'callback_fail': return 'failed';
-        case 'cancelled': return 'cancelled';
-        default: return 'processing';
-    }
+function statusText(s) {
+    const map = {
+        pending: '排队中',
+        processing: '处理中',
+        failed: '失败',
+        completed: '已完成',
+        callback_fail: '回调失败',
+        cancelled: '已取消',
+    };
+    return map[s] || s || '-';
 }
 
 // Close modal on overlay click
@@ -690,8 +753,14 @@ function toggleTaskDetail(section) {
 }
 
 async function doLogout() {
-    await fetch('/api/logout', { method: 'POST' });
-    window.location.href = '/login';
+    try {
+        await fetch('/api/logout', { method: 'POST' });
+    } catch (_) {
+        // 忽略网络错误；若 token 已过期则 401 拦截器已触发跳转
+    }
+    if (!_loginRedirecting) {
+        window.location.href = '/login';
+    }
 }
 
 // ==== 系统设置 ====
@@ -759,9 +828,9 @@ async function loadUsers() {
         const json = await res.json();
         const data = json.data || [];
         const tbody = document.getElementById('usersTbody');
-        tbody.innerHTML = data.map(function(u) {
+        tbody.innerHTML = data.map(function(u, idx) {
             const roleLabel = u.role === 1 ? '管理员' : '普通用户';
-            return '<tr><td>' + escHtml(u.user_name) + '</td><td>' + roleLabel + '</td><td>' + escHtml(u.note||'') + '</td>' +
+            return '<tr><td>' + (idx + 1) + '</td><td>' + escHtml(u.user_name) + '</td><td>' + roleLabel + '</td><td>' + escHtml(u.note||'') + '</td>' +
                 '<td>' + (u.user_name !== 'admin' ? '<button class="cfg-btn cfg-btn-reset" onclick="deleteUser(\'' + escHtml(u.user_name) + '\')" style="padding:4px 10px;font-size:0.8rem;color:#c62828;">删除</button>' : '') + '</td></tr>';
         }).join('');
     } catch (err) { toast('加载用户失败: ' + err.message, 'error'); }
@@ -806,9 +875,13 @@ function closeAuditDetail() {
     document.getElementById('auditDetailModal').classList.remove('show');
 }
 
-async function loadAudit(mode) {
-    // mode: 0 = 最近10条, 1 = 按条件查询
-    let url = API + '/audit?limit=10';
+const AUDIT_PAGE_SIZE = 10;
+let _auditPage = 1;
+let _auditTotal = 0;
+
+async function loadAudit(mode, page = 1) {
+    // mode: 0 = 最近N条, 1 = 按条件查询
+    let url = API + '/audit?page=' + page + '&page_size=' + AUDIT_PAGE_SIZE;
     if (mode === 1) {
         const taskId = document.getElementById('auditTaskId').value.trim();
         const linkId = document.getElementById('auditLinkId').value.trim();
@@ -816,35 +889,56 @@ async function loadAudit(mode) {
         const params = new URLSearchParams();
         if (taskId) params.set('task_id', taskId);
         if (linkId) params.set('linkid', linkId);
-        params.set('limit', '100');
+        params.set('page', page);
+        params.set('page_size', AUDIT_PAGE_SIZE);
         url = API + '/audit?' + params.toString();
     }
 
     try {
+        _auditPage = page;
         const res = await fetch(url);
         const json = await res.json();
-        const list = Array.isArray(json.data) ? json.data : [];
-        const tbody = document.getElementById('auditTbody');
-        if (list.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;padding:24px;">暂无记录</td></tr>';
-            return;
-        }
-        tbody.innerHTML = list.map(t => {
-            const taskId = escHtml(t.task_id);
-            const title = t.title || '-';
-            const titleDisplay = title.length > 15 ? escHtml(title.substring(0, 15)) + '...' : escHtml(title);
-            return `<tr>
-                <td><span title="${escHtml(title)}" style="cursor:default;">${titleDisplay}</span></td>
-                <td style="font-family:monospace;font-size:0.8rem;">${taskId.substring(0, 18)}...</td>
-                <td>${escHtml(t.linkid || '-')}</td>
-                <td><span class="path-mono">${escHtml(t.path || '-')}</span></td>
-                <td><span class="badge badge-${statusBadgeClass(t.status)}">${t.status}</span></td>
-                <td>${fmtTs(t.created_at)}</td>
-                <td>${fmtTs(t.finished_at)}</td>
-                <td class="col-action"><button class="cfg-btn-sm cfg-btn-icon" onclick="viewAuditDetail('${taskId}')" title="详情"><i class="fas fa-history"></i></button></td>
-            </tr>`;
-        }).join('');
+        const data = json.data || {};
+        const list = Array.isArray(data.items) ? data.items : [];
+        _auditTotal = data.total || 0;
+        renderAuditPage(list);
     } catch (err) { toast('查询失败: ' + err.message, 'error'); }
+}
+
+function renderAuditPage(list) {
+    const total = _auditTotal;
+    const totalPages = Math.max(1, Math.ceil(total / AUDIT_PAGE_SIZE));
+    const tbody = document.getElementById('auditTbody');
+    if (total === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;padding:24px;">暂无记录</td></tr>';
+        document.getElementById('auditPager').innerHTML = '';
+        return;
+    }
+    const start = (_auditPage - 1) * AUDIT_PAGE_SIZE;
+    tbody.innerHTML = list.map((t, i) => {
+        const no = start + i + 1;
+        const taskId = escHtml(t.task_id);
+        const title = t.title || '-';
+        const titleDisplay = title.length > 15 ? escHtml(title.substring(0, 15)) + '...' : escHtml(title);
+        return `<tr>
+            <td>${no}</td>
+            <td><span title="${escHtml(title)}" style="cursor:default;">${titleDisplay}</span></td>
+            <td style="font-family:monospace;font-size:0.8rem;">${taskId.substring(0, 18)}...</td>
+            <td>${escHtml(t.linkid || '-')}</td>
+            <td><span class="path-mono">${escHtml(t.path || '-')}</span></td>
+            <td>${statusText(t.status)}</td>
+            <td>${fmtTs(t.created_at)}</td>
+            <td>${fmtTs(t.finished_at)}</td>
+            <td class="col-action"><button class="cfg-btn-sm cfg-btn-icon" onclick="viewAuditDetail('${taskId}')" title="详情"><i class="fas fa-history"></i></button></td>
+        </tr>`;
+    }).join('');
+    document.getElementById('auditPager').innerHTML = pagerHtml(_auditPage, totalPages, 'loadAudit');
+}
+
+function pagerHtml(page, totalPages, fnName) {
+    return '<span style="color:#888;font-size:0.85rem;">第 ' + page + ' / ' + totalPages + ' 页</span>' +
+        '<button class="cfg-btn-sm" onclick="' + fnName + '(' + (page - 1) + ')"' + (page <= 1 ? ' disabled' : '') + '><i class="fas fa-chevron-left"></i> 上一页</button>' +
+        '<button class="cfg-btn-sm" onclick="' + fnName + '(' + (page + 1) + ')"' + (page >= totalPages ? ' disabled' : '') + '>下一页 <i class="fas fa-chevron-right"></i></button>';
 }
 
 let _auditDetailData = null;  // 当前查看的详情数据，供导出使用
@@ -872,7 +966,9 @@ function auditTimelineHtml(t) {
         '</div>';
     // 渲染时间线
     html += '<div class="audit-timeline">';
+    let step = 0;
     for (const ev of events) {
+        step++;
         const icon = ev.type === 'callback' ? 'fa-paper-plane'
             : ev.type === 'tool' ? 'fa-wrench'
             : ev.type === 'input' ? 'fa-inbox'
@@ -891,7 +987,7 @@ function auditTimelineHtml(t) {
         html += '<div class="timeline-body">';
         html += '<div class="timeline-header" onclick="toggleTimelineDetail(this)" style="cursor:pointer;">';
         if (ev.time) html += '<span class="timeline-time">' + fmtTimelineTs(ev.time) + '</span>';
-        html += '<strong>' + escHtml(ev.title) + '</strong>';
+        html += '<strong>' + step + '. ' + escHtml(ev.title) + '</strong>';
         html += '<i class="fas fa-chevron-right timeline-toggle" style="margin-left:auto;color:#999;font-size:0.75rem;"></i></div>';
         if (ev.detail) {
             html += '<pre class="timeline-detail" style="display:none;">' + escHtml(ev.detail) + '</pre>';
@@ -905,7 +1001,7 @@ function auditTimelineHtml(t) {
 function buildAuditEvents(t) {
     const events = [];
     // 1. 任务创建
-    events.push({ time: t.created_at, type: 'create', title: '任务创建', detail: '接口: ' + (t.path || '-') });
+    events.push({ time: t.created_at, type: 'create', title: '任务创建', detail: '访问路径: ' + (t.path || '-') });
     // 2. 收到请求数据
     if (t.request_body) {
         events.push({ time: t.created_at, type: 'input', title: '收到请求数据', detail: jsonFmt(t.request_body) });
@@ -944,9 +1040,8 @@ function buildAuditEvents(t) {
     // 7. 完成 / 失败
     events.push({
         time: t.finished_at,
-        type: t.status === 'completed' || t.status === 'success' ? 'done' : (t.status === 'failed' || t.status === 'callback_fail' ? 'error' : 'info'),
-        title: t.status === 'completed' || t.status === 'success' ? '任务完成'
-            : (t.status === 'failed' ? '任务失败' : t.status === 'callback_fail' ? '回调失败' : '状态: ' + t.status),
+        type: t.status === 'completed' ? 'done' : (t.status === 'failed' || t.status === 'callback_fail' ? 'error' : 'info'),
+        title: statusText(t.status),
         detail: t.error_message || ''
     });
     return events;
@@ -959,20 +1054,22 @@ function exportAuditMd() {
     const linkid = t.linkid || t.task_id?.substring(0, 8) || 'export';
 
     let items = '';
+    let step = 0;
     for (const ev of events) {
+        step++;
         const timeStr = ev.time ? fmtTimelineTs(ev.time) : '';
         const detailBlock = ev.detail ? '<pre class="detail">' + escHtml(ev.detail) + '</pre>' : '';
         items += '<div class="item ' + ev.type + '">' +
             '<div class="dot"></div>' +
             '<div class="body">' +
-            '<div class="ihead"><span class="time">' + escHtml(timeStr) + '</span><strong>' + escHtml(ev.title) + '</strong></div>' +
+            '<div class="ihead"><span class="time">' + escHtml(timeStr) + '</span><strong>' + step + '. ' + escHtml(ev.title) + '</strong></div>' +
             detailBlock +
             '</div></div>';
     }
 
     const html = '<!DOCTYPE html>\n<html lang="zh-CN">\n<head>\n<meta charset="UTF-8">\n' +
         '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
-        '<title>数据处理时间线 — ' + escHtml(linkid) + '</title>\n' +
+        '<title>任务时间线 — ' + escHtml(linkid) + '</title>\n' +
         '<style>\n' +
         '*{margin:0;padding:0;box-sizing:border-box}' +
         'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f5f6fa;color:#333;padding:40px 20px}' +
@@ -985,27 +1082,19 @@ function exportAuditMd() {
         '.tl{padding:28px 36px}' +
         '.item{display:flex;gap:14px;padding:14px 0;border-left:2px solid #e0e0e0;margin-left:8px;position:relative}' +
         '.item:last-child{border-left-color:transparent}' +
-        '.dot{width:16px;height:16px;border-radius:50%;background:#667eea;flex-shrink:0;margin-left:-9px;margin-top:2px;position:relative;z-index:1}' +
+        '.dot{width:16px;height:16px;border-radius:50%;background:#4b6cb7;flex-shrink:0;margin-left:-9px;margin-top:2px;position:relative;z-index:1}' +
         '.item.error .dot{background:#e53e3e}' +
-        '.item.done .dot{background:#38a169}' +
-        '.item.callback .dot{background:#3182ce}' +
-        '.item.create .dot{background:#805ad5}' +
-        '.item.prompt .dot{background:#d69e2e}' +
-        '.item.output .dot{background:#319795}' +
-        '.item.input .dot{background:#dd6b20}' +
-        '.item.tool .dot{background:#2b6cb0}' +
-        '.item.tool_result .dot{background:#718096}' +
         '.body{flex:1;min-width:0}' +
         '.ihead{display:flex;flex-wrap:wrap;align-items:center;gap:10px;font-size:.92rem}' +
         '.time{font-family:monospace;font-size:.78rem;color:#888;white-space:nowrap}' +
         '.detail{background:#f7f8fa;border-radius:6px;padding:12px 16px;margin-top:8px;font-size:.82rem;line-height:1.6;white-space:pre-wrap;word-break:break-word;max-height:400px;overflow:auto;border:1px solid #edf2f7}' +
         '.foot{padding:16px 36px;border-top:1px solid #edf2f7;font-size:.78rem;color:#999;text-align:center}' +
         '</style>\n</head>\n<body>\n<div class="wrap">\n' +
-        '<div class="page-head"><h1>&#129302; 数据处理时间线</h1>' +
+        '<div class="page-head"><h1>&#129302; 任务时间线</h1>' +
         '<div class="meta"><span>LinkID: ' + escHtml(linkid) + '</span>' +
         '<span>Task ID: ' + escHtml(t.task_id?.substring(0, 18) || '-') + '...</span>' +
-        '<span>接口: ' + escHtml(t.path || '-') + '</span>' +
-        '<span class="badge">' + escHtml(t.status || '-') + '</span>' +
+        '<span>访问路径: ' + escHtml(t.path || '-') + '</span>' +
+        '<span>' + statusText(t.status) + '</span>' +
         '<span>' + fmtTs(t.created_at) + ' ~ ' + fmtTs(t.finished_at) + '</span></div></div>\n' +
         '<div class="tl">\n' + items + '\n</div>\n' +
         '<div class="foot">Powered by doc_pro_agent</div>\n</div>\n</body>\n</html>';

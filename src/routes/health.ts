@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { nowReadable } from '../time.js';
 
 export function createHealthRouter(): Router {
   const router = Router();
@@ -6,7 +7,7 @@ export function createHealthRouter(): Router {
   router.get('/health', (_req: Request, res: Response) => {
     res.json({
       status: 'ok',
-      timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      timestamp: nowReadable(),
     });
   });
 

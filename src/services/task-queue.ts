@@ -9,6 +9,7 @@ import { taskLogsStore } from '../store.js';
 import { renderPrompt } from './prompt-engine.js';
 import { runAgent } from './sdk-runner.js';
 import { deliverCallback } from './callback.js';
+import { nowReadable, nowTs } from '../time.js';
 import type { Config } from '../config.js';
 import type { AgentInterface, ProcessRequest, TaskLog, TaskStatus } from '../types.js';
 
@@ -21,8 +22,8 @@ let worker: WorkerFn;
 let running = 0;
 const pending: Array<{ task_id: string; path: string; iface: AgentInterface; body: ProcessRequest }> = [];
 
-function nowISO(): string {
-  return new Date().toISOString();
+function nowLocal(): string {
+  return nowReadable();
 }
 
 async function processItem(item: {
@@ -54,7 +55,7 @@ async function processItem(item: {
       sdk_output: result.rawOutput,
       sdk_trace: result.trace,
       error_message: errMsg,
-      finished_at: nowISO(),
+      finished_at: nowLocal(),
     });
 
     const failPayload = buildResponse(5000, errMsg, task_id, body.linkid, null);
@@ -96,7 +97,7 @@ async function processItem(item: {
     status: finalStatus,
     callback_body: cbResult.body,
     callback_response: cbResult.responseBody,
-    finished_at: nowISO(),
+    finished_at: nowLocal(),
     ...(cbResult.errorMsg ? { error_message: cbResult.errorMsg } : {}),
   });
 
@@ -132,7 +133,7 @@ export function initTaskQueue(c: Config): void {
 
 export function enqueue(iface: AgentInterface, body: ProcessRequest): { task_id: string } {
   const taskId = uuid();
-  const now = nowISO();
+  const now = nowLocal();
 
   // 持久化
   const logEntry: TaskLog = {
@@ -153,6 +154,8 @@ export function enqueue(iface: AgentInterface, body: ProcessRequest): { task_id:
     error_message: null,
     created_at: now,
     finished_at: null,
+    created_ts: nowTs(),
+    finished_ts: null,
   };
   taskLogsStore.create(logEntry);
 
@@ -200,7 +203,7 @@ function buildResponse(
 ) {
   return {
     code,
-    timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
+    timestamp: nowReadable(),
     message,
     task_id: taskId,
     linkid,

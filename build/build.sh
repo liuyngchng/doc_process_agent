@@ -9,7 +9,7 @@ set -euo pipefail
 #   VERSION=0.1.0 ./build.sh                      # 通过环境变量指定版本
 # ---------------------------------------------------------------------------
 
-BUILD_START=$SECONDS
+BUILD_START=$(date +%s)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -211,7 +211,7 @@ echo ""
 echo "=== 清理 dangling 镜像 ==="
 docker image prune -f --filter "dangling=true" || true
 
-BUILD_ELAPSED=$(( SECONDS - BUILD_START ))
+BUILD_ELAPSED=$(( $(date +%s) - BUILD_START ))
 echo "============================================"
 echo " Build complete: ${FULL_TAG}"
 printf " 总耗时: %dm %ds\n" $(( BUILD_ELAPSED / 60 )) $(( BUILD_ELAPSED % 60 ))

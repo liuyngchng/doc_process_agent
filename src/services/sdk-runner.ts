@@ -8,6 +8,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { getLogger } from '../logger.js';
+import { fmtLocalTs } from '../time.js';
 import type { Config } from '../config.js';
 import type { StreamEntry } from '../types.js';
 
@@ -186,8 +187,7 @@ export interface SdkResult {
 }
 
 function ts(): string {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}.${String(d.getMilliseconds()).padStart(3,'0')}`;
+  return fmtLocalTs(Date.now());
 }
 
 /** 需要过滤掉的 SDK 内部系统消息（度量/调试类，对用户无意义）*/
